@@ -22,7 +22,7 @@ def get_changes(db, fname):
                 exit(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
             rev_prev = int(tmp[0])
     except FileNotFoundError:
-        # no previous sync, leave rev_prev at 0 as this will sync entire DB
+        # no previous sync or sync file broken, leave rev_prev at 0 as this will sync entire DB
         pass
 
     prefix = os.path.join(str(db.default_path()), '')
