@@ -106,11 +106,12 @@ def run_remote():
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--remote", type=str, help="Remote host to connect to")
+    parser.add_argument("-r", "--remote", type=str, help="remote host to sync with")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
-    parser.add_argument("-v", "--progress", action="store_true", help="Show progress, not just summary")
+    parser.add_argument("-v", "--progress", action="store_true", help="show progress, not just summary")
     parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use")
-    parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="Remote script path")
+    parser.add_argument("-m", "--mbsync", action="store_true", help="sync mbsync files (.mbsyncstate, .uidvalidity)")
+    parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="remote script path")
     args = parser.parse_args()
 
     if args.remote:
