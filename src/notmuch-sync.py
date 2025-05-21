@@ -5,9 +5,9 @@ import os
 import struct
 import subprocess
 import socket
+import json
 
 import notmuch2
-import json
 
 global args
 
@@ -15,11 +15,11 @@ def get_changes(db, fname):
     """Get changes that happened since the last sync, or everything in the DB if no previous sync."""
     rev_prev = 0
     try:
-        with open(fname, 'r') as f:
+        with open(fname, 'r', encoding="utf-8") as f:
             tmp = f.read().strip('\n\r').split(' ')
             uuid = db.revision().uuid.decode()
             if tmp[1] != uuid:
-                exit(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
+                sys.exit(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
             rev_prev = int(tmp[0])
     except FileNotFoundError:
         # no previous sync or sync file broken, leave rev_prev at 0 as this will sync entire DB
@@ -55,7 +55,7 @@ def run_local():
         changes = get_changes(db, fname)
         print(len(changes))
         # process changes
-        with open(fname, 'w') as f:
+        with open(fname, 'w', encoding="utf-8") as f:
             f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
 
