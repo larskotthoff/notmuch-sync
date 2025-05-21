@@ -9,8 +9,6 @@ import json
 
 import notmuch2
 
-global args
-
 def get_changes(db, fname):
     """Get changes that happened since the last sync, or everything in the DB if no previous sync."""
     rev_prev = 0
@@ -31,7 +29,7 @@ def get_changes(db, fname):
              "files": [ str(f).removeprefix(prefix) for f in msg.filenames() ]} for msg in db.messages(f"lastmod:{rev_prev}..") ]
 
 
-def run_local():
+def run_local(args):
     #print("READY", flush=True)
     #while True:
     #    line = sys.stdin.readline()
@@ -59,7 +57,7 @@ def run_local():
             f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
 
-def run_remote():
+def run_remote(args):
     ssh_cmd = [args.ssh_cmd, f"{args.user}{'@' if args.user else ''}{args.remote}", f"NOTMUCH_SYNC_LOCAL={socket.getfqdn()} python {args.path}"]
     proc = subprocess.Popen(
         ssh_cmd,
@@ -115,6 +113,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.remote:
-        run_remote()
+        run_remote(args)
     else:
-        run_local()
+        run_local(args)
