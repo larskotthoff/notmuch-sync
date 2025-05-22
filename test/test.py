@@ -5,8 +5,11 @@ from tempfile import NamedTemporaryFile
 
 import notmuch2
 
-import importlib  
-ns = importlib.import_module("src.notmuch-sync")
+from importlib.util import spec_from_loader, module_from_spec
+from importlib.machinery import SourceFileLoader 
+spec = spec_from_loader("notmuch-sync", SourceFileLoader("notmuch-sync", "src/notmuch-sync"))
+ns = module_from_spec(spec)
+spec.loader.exec_module(ns)
 
 def test_changes():
     mm = lambda: None
