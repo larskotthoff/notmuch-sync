@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import MagicMock
+import os
+from unittest.mock import MagicMock, mock_open, patch
 from tempfile import NamedTemporaryFile
 
 import notmuch2
@@ -86,3 +87,67 @@ def test_changes_corrupted_file():
         assert pytest_wrapped_e.value.code == f"Sync state file {f.name} corrupted, delete to sync from scratch."
 
     db.revision.assert_called_once()
+
+
+def test_run_local():
+    args = lambda: None
+    args.remote = "host"
+
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 124
+    rev.uuid = b'abd'
+    db.revision = MagicMock(return_value=rev)
+    db.default_path = MagicMock(return_value='/foo')
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    fname = "/foo/.notmuch/notmuch-sync-host"
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch.object(ns, "get_changes", return_value=[]) as gc:
+            with patch("builtins.open", mock_open()) as o:
+                ns.run_local(args)
+                o.assert_called_once_with(fname, "w", encoding="utf-8")
+                hdl = o()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert "124 abd" == args[0]
+            gc.assert_called_once_with(db, fname)
+
+    assert db.revision.call_count == 2
+    db.default_path.assert_called_once()
+
+
+def test_run_local_remote_env():
+    args = lambda: None
+    args.remote = None
+    os.environ["NOTMUCH_SYNC_LOCAL"] = "host"
+
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 124
+    rev.uuid = b'abd'
+    db.revision = MagicMock(return_value=rev)
+    db.default_path = MagicMock(return_value='/foo')
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    fname = "/foo/.notmuch/notmuch-sync-host"
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch.object(ns, "get_changes", return_value=[]) as gc:
+            with patch("builtins.open", mock_open()) as o:
+                ns.run_local(args)
+                o.assert_called_once_with(fname, "w", encoding="utf-8")
+                hdl = o()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert "124 abd" == args[0]
+            gc.assert_called_once_with(db, fname)
+
+    assert db.revision.call_count == 2
+    db.default_path.assert_called_once()
+    os.environ["NOTMUCH_SYNC_LOCAL"] = ""
