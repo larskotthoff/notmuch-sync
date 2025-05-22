@@ -54,7 +54,7 @@ def run_local(args):
     #        break
 
     with notmuch2.Database() as db:
-        fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or os.getenv('NOTMUCH_SYNC_LOCAL', '')}")
+        fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or args.frm}")
         changes = get_changes(db, fname)
         print(len(changes))
         # process changes
@@ -66,7 +66,7 @@ def run_remote(args):
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
-        cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"NOTMUCH_SYNC_LOCAL={socket.getfqdn()} {args.path}"]
+        cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path} --from {socket.getfqdn()}"]
     print(cmd)
     proc = subprocess.Popen(
         cmd,
@@ -117,6 +117,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--remote", type=str, help="remote host to sync with")
+    parser.add_argument("-f", "--from", dest="frm", type=str, help="host connected from (used internally)")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
     parser.add_argument("-v", "--progress", action="store_true", help="show progress, not just summary")
     parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use")

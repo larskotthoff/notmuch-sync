@@ -123,10 +123,10 @@ def test_run_local():
     db.default_path.assert_called_once()
 
 
-def test_run_local_remote_env():
+def test_run_local_remote_from():
     args = lambda: None
     args.remote = None
-    os.environ["NOTMUCH_SYNC_LOCAL"] = "host"
+    args.frm = "host"
 
     db = lambda: None
     rev = lambda: None
@@ -153,4 +153,3 @@ def test_run_local_remote_env():
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()
-    os.environ["NOTMUCH_SYNC_LOCAL"] = ""
