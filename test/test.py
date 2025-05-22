@@ -68,3 +68,21 @@ def test_changes_changed_uuid():
         assert pytest_wrapped_e.value.code == "Last sync with UUID abc, but notmuch DB has UUID abd, aborting..."
 
     db.revision.assert_called_once()
+
+
+def test_changes_corrupted_file():
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 124
+    rev.uuid = b'abd'
+    db.revision = MagicMock(return_value=rev)
+
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
+        f.write("123abc")
+        f.flush()
+        with pytest.raises(SystemExit) as pytest_wrapped_e:
+            ns.get_changes(db, f.name)
+        assert pytest_wrapped_e.type == SystemExit
+        assert pytest_wrapped_e.value.code == f"Sync state file {f.name} corrupted, delete to sync from scratch."
+
+    db.revision.assert_called_once()
