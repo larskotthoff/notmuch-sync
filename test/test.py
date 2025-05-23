@@ -123,10 +123,10 @@ def test_run_local():
     db.default_path.assert_called_once()
 
 
-def test_run_local_remote_from():
+def test_run_local_remote_host():
     args = lambda: None
     args.remote = None
-    args.frm = "host"
+    args.host = "host"
 
     db = lambda: None
     rev = lambda: None
