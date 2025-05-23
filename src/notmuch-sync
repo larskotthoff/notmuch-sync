@@ -6,8 +6,9 @@ import struct
 import subprocess
 import socket
 import json
-import re
 import shlex
+
+from contextlib import contextmanager
 
 import notmuch2
 
@@ -34,6 +35,16 @@ def get_changes(db, fname):
              "files": [ str(f).removeprefix(prefix) for f in msg.filenames() ]} for msg in db.messages(f"lastmod:{rev_prev}..") ]
 
 
+@contextmanager
+def init(args):
+    with notmuch2.Database() as db:
+        fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or args.host}")
+        changes = get_changes(db, fname)
+        yield (db, changes)
+        with open(fname, 'w', encoding="utf-8") as f:
+            f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
+
+
 def run_local(args):
     #print("READY", flush=True)
     #while True:
@@ -53,13 +64,8 @@ def run_local(args):
     #        print("GOODBYE", flush=True)
     #        break
 
-    with notmuch2.Database() as db:
-        fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or args.frm}")
-        changes = get_changes(db, fname)
+    with init(args) as (db, changes):
         print(len(changes))
-        # process changes
-        with open(fname, 'w', encoding="utf-8") as f:
-            f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
 
 def run_remote(args):
@@ -79,6 +85,9 @@ def run_remote(args):
     stdout = proc.stdout
     stderr = proc.stderr
     stdin = proc.stdin
+
+    with init(args) as (db, changes):
+        print(len(changes))
 
     ## Wait for "READY"
     #ready_line = stdout.readline()
@@ -105,8 +114,6 @@ def run_remote(args):
 
     #stdin.write(b"BYE\n")
     #stdin.flush()
-    print(stdout.read().strip().decode())
-    print(stderr.read().strip().decode())
 
     stdin.close()
     stdout.close()
@@ -117,7 +124,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--remote", type=str, help="remote host to sync with")
-    parser.add_argument("-f", "--from", dest="frm", type=str, help="host connected from (used internally)")
+    parser.add_argument("-f", "--host", type=str, help="host to sync with (use with --remote-cmd)")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
     parser.add_argument("-v", "--progress", action="store_true", help="show progress, not just summary")
     parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use")

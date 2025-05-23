@@ -1,2 +1,3 @@
 notmuch2
 pytest
+pytest-shell-utilities
