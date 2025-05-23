@@ -45,38 +45,24 @@ def initial_changes(args):
             f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
 
-def change_tags(db, id, tags):
-    try:
-        msg = db.find(id)
-        if tags != set(msg.tags):
-            with msg.frozen():
-                msg.tags.clear()
-                for tag in tags:
-                    msg.tags.add(tag)
-                msg.tags.to_maildir_flags()
-    except LookupError:
-        # we don't have this message on our side, it will be added later
-        # when syncing files
-        pass
-
-
 def sync_tags(db, changes_mine, changes_theirs):
-    ats = ["unread"]
-    if "sync.and_tags" in db.config:
-        ats = db.config["sync.and_tags"].split(';')
     for id in changes_theirs:
         tags = changes_theirs[id]["tags"]
         if id in changes_mine:
             tags = list(set(tags) | set(changes_mine[id]["tags"]))
-            tags = [tag for tag in tags if tag not in ats or (tag in changes_mine[id]["tags"] and tag in changes_theirs[id]["tags"])]
-        else:
-            tags = [tag for tag in tags if tag not in ats]
         tags = set(tags)
-        change_tags(db, id, tags)
-    for id in changes_mine:
-        if id not in changes_theirs:
-            tags = [tag for tag in changes_mine[id]["tags"] if tag not in ats]
-            change_tags(db, id, tags)
+        try:
+            msg = db.find(id)
+            if tags != set(msg.tags):
+                with msg.frozen():
+                    msg.tags.clear()
+                    for tag in tags:
+                        msg.tags.add(tag)
+                    msg.tags.to_maildir_flags()
+        except LookupError:
+            # we don't have this message on our side, it will be added later
+            # when syncing files
+            pass
 
 
 def sync_server(args):
