@@ -18,11 +18,14 @@ def get_changes(db, fname):
     try:
         with open(fname, 'r', encoding="utf-8") as f:
             tmp = f.read().strip('\n\r').split(' ')
-            uuid = db.revision().uuid.decode()
+            revision = db.revision()
+            uuid = revision.uuid.decode()
             try:
                 if tmp[1] != uuid:
                     sys.exit(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
                 rev_prev = int(tmp[0])
+                if rev_prev > revision.rev:
+                    sys.exit(f"Last sync revision {rev_prev} larger than current DB revision {revision.rev}, aborting...")
             except Exception:
                 sys.exit(f"Sync state file {fname} corrupted, delete to sync from scratch.")
     except FileNotFoundError:

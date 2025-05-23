@@ -76,6 +76,24 @@ def test_changes_changed_uuid():
     db.revision.assert_called_once()
 
 
+def test_changes_later_rev():
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 122
+    rev.uuid = b'abc'
+    db.revision = MagicMock(return_value=rev)
+
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
+        f.write("123 abc")
+        f.flush()
+        with pytest.raises(SystemExit) as pytest_wrapped_e:
+            ns.get_changes(db, f.name)
+        assert pytest_wrapped_e.type == SystemExit
+        assert pytest_wrapped_e.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
+
+    db.revision.assert_called_once()
+
+
 def test_changes_corrupted_file():
     db = lambda: None
     rev = lambda: None
