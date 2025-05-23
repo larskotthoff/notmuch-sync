@@ -5,6 +5,8 @@ import re
 
 from tempfile import TemporaryDirectory
 
+IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
+
 def write_conf(path):
     conf_path = os.path.join(path, ".notmuch-config")
     with open(conf_path, "w", encoding="utf-8") as f:
@@ -103,6 +105,7 @@ def test_sync_tags(shell):
                 assert re.match('9 [0-9a-z-]+', f.read())
 
 
+@pytest.mark.skipif(IN_GITHUB_ACTIONS, reason="Github runner doesn't seem to pick up notmuch config.")
 def test_sync_tags_custom_and(shell):
     with TemporaryDirectory() as local:
         with TemporaryDirectory() as remote:
