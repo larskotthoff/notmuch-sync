@@ -30,14 +30,14 @@ def get_changes(db, fname):
         pass
 
     prefix = os.path.join(str(db.default_path()), '')
-    return [ {"id": msg.messageid,
-             "tags": list(msg.tags),
-             "files": [ str(f).removeprefix(prefix) for f in msg.filenames() ]} for msg in db.messages(f"lastmod:{rev_prev}..") ]
+    return {msg.messageid: {"tags": list(msg.tags), "files": [
+        str(f).removeprefix(prefix) for f in msg.filenames() ]} for msg in
+            db.messages(f"lastmod:{rev_prev}..")}
 
 
 @contextmanager
-def init(args):
-    with notmuch2.Database() as db:
+def initial_changes(args):
+    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as db:
         fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or args.host}")
         changes = get_changes(db, fname)
         yield (db, changes)
@@ -45,7 +45,41 @@ def init(args):
             f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
 
-def run_local(args):
+def change_tags(db, id, tags):
+    try:
+        msg = db.find(id)
+        if tags != set(msg.tags):
+            with msg.frozen():
+                msg.tags.clear()
+                for tag in tags:
+                    msg.tags.add(tag)
+                msg.tags.to_maildir_flags()
+    except LookupError:
+        # we don't have this message on our side, it will be added later
+        # when syncing files
+        pass
+
+
+def sync_tags(db, changes_mine, changes_theirs):
+    ats = ["unread"]
+    if "sync.and_tags" in db.config:
+        ats = db.config["sync.and_tags"].split(';')
+    for id in changes_theirs:
+        tags = changes_theirs[id]["tags"]
+        if id in changes_mine:
+            tags = list(set(tags) | set(changes_mine[id]["tags"]))
+            tags = [tag for tag in tags if tag not in ats or (tag in changes_mine[id]["tags"] and tag in changes_theirs[id]["tags"])]
+        else:
+            tags = [tag for tag in tags if tag not in ats]
+        tags = set(tags)
+        change_tags(db, id, tags)
+    for id in changes_mine:
+        if id not in changes_theirs:
+            tags = [tag for tag in changes_mine[id]["tags"] if tag not in ats]
+            change_tags(db, id, tags)
+
+
+def sync_server(args):
     #print("READY", flush=True)
     #while True:
     #    line = sys.stdin.readline()
@@ -64,30 +98,34 @@ def run_local(args):
     #        print("GOODBYE", flush=True)
     #        break
 
-    with init(args) as (db, changes):
-        print(len(changes))
+    with initial_changes(args) as (db, changes_mine):
+        print(json.dumps(changes_mine))
+        changes_theirs = json.loads(sys.stdin.readline())
+        sync_tags(db, changes_mine, changes_theirs)
 
 
-def run_remote(args):
+def sync_client(args):
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
         cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path} --from {socket.getfqdn()}"]
-    print(cmd)
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=False  # raw binary mode
+        text=True,
+        bufsize=1
     )
 
     stdout = proc.stdout
     stderr = proc.stderr
     stdin = proc.stdin
 
-    with init(args) as (db, changes):
-        print(len(changes))
+    with initial_changes(args) as (db, changes_mine):
+        print(json.dumps(changes_mine), file=stdin)
+        changes_theirs = json.loads(stdout.readline())
+        sync_tags(db, changes_mine, changes_theirs)
 
     ## Wait for "READY"
     #ready_line = stdout.readline()
@@ -115,6 +153,8 @@ def run_remote(args):
     #stdin.write(b"BYE\n")
     #stdin.flush()
 
+    #print(stderr.read(), file=sys.stderr)
+
     stdin.close()
     stdout.close()
     stderr.close()
@@ -134,6 +174,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.remote or args.remote_cmd:
-        run_remote(args)
+        sync_client(args)
     else:
-        run_local(args)
+        sync_server(args)

@@ -1,5 +1,7 @@
 import pytest
 import os
+import sys
+import io
 from unittest.mock import MagicMock, mock_open, patch
 from tempfile import NamedTemporaryFile
 
@@ -29,7 +31,7 @@ def test_changes():
         f.write("123 abc")
         f.flush()
         changes = ns.get_changes(db, f.name)
-        assert changes == [{"id": "foo", "tags": ["foo", "bar"], "files": ["bar", "foo"]}]
+        assert changes == {"foo": {"tags": ["foo", "bar"], "files": ["bar", "foo"]}}
 
     db.revision.assert_called_once()
     db.default_path.assert_called_once()
@@ -50,7 +52,7 @@ def test_changes_first_sync():
     f = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f.close()
     changes = ns.get_changes(db, f.name)
-    assert changes == [{"id": "foo", "tags": ["foo", "bar"], "files": ["bar", "foo"]}]
+    assert changes == {"foo": {"tags": ["foo", "bar"], "files": ["bar", "foo"]}}
 
     db.default_path.assert_called_once()
     db.messages.assert_called_once_with("lastmod:0..")
@@ -92,7 +94,13 @@ def test_changes_corrupted_file():
     db.revision.assert_called_once()
 
 
-def test_run_local():
+def test_sync_tags_empty():
+    db = lambda: None
+    db.config = {}
+    ns.sync_tags(db, {}, {})
+
+
+def test_sync_server(monkeypatch):
     args = lambda: None
     args.remote = "host"
 
@@ -102,6 +110,7 @@ def test_run_local():
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value='/foo')
+    db.config = {}
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -111,7 +120,8 @@ def test_run_local():
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                ns.run_local(args)
+                monkeypatch.setattr(sys, "stdin", io.StringIO('{}'))
+                ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
@@ -123,7 +133,7 @@ def test_run_local():
     db.default_path.assert_called_once()
 
 
-def test_run_local_remote_host():
+def test_sync_server_remote_host(monkeypatch):
     args = lambda: None
     args.remote = None
     args.host = "host"
@@ -134,6 +144,7 @@ def test_run_local_remote_host():
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value='/foo')
+    db.config = {}
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -143,7 +154,8 @@ def test_run_local_remote_host():
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                ns.run_local(args)
+                monkeypatch.setattr(sys, "stdin", io.StringIO('{}'))
+                ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
