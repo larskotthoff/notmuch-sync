@@ -56,10 +56,11 @@ def sync_tags(db, changes_mine, changes_theirs):
         tags = set(tags)
         try:
             msg = db.find(id)
+            print(f"{tags}, {msg.tags}")
             if tags != set(msg.tags):
                 with msg.frozen():
                     msg.tags.clear()
-                    for tag in tags:
+                    for tag in sorted(list(tags)):
                         msg.tags.add(tag)
                     msg.tags.to_maildir_flags()
         except LookupError:

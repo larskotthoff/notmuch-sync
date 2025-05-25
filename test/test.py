@@ -2,7 +2,7 @@ import pytest
 import os
 import sys
 import io
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, PropertyMock, call, mock_open, patch
 from tempfile import NamedTemporaryFile
 
 import notmuch2
@@ -114,8 +114,131 @@ def test_changes_corrupted_file():
 
 def test_sync_tags_empty():
     db = lambda: None
-    db.config = {}
     ns.sync_tags(db, {}, {})
+
+
+def test_sync_tags_only_theirs():
+    m = MagicMock()
+    m.frozen = MagicMock()
+    m.frozen.__enter__.return_value = None
+    m.frozen.__exit__.return_value = False
+
+    mt = MagicMock(spec=list)
+    tags = ["foo", "bar"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    mt.to_maildir_flags = MagicMock()
+    type(m).tags = PropertyMock(return_value=mt)
+
+    db = lambda: None
+    db.find = MagicMock(return_value=m)
+
+    ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+
+    db.find.assert_called_once_with("foo")
+    m.frozen.assert_called_once()
+    mt.clear.assert_called_once()
+    assert mt.add.mock_calls == [
+        call("bar"),
+        call("foobar")
+    ]
+    mt.to_maildir_flags.assert_called_once()
+
+
+def test_sync_tags_only_theirs_no_changes():
+    m = MagicMock()
+
+    mt = MagicMock(spec=list)
+    tags = ["foo", "bar"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    type(m).tags = PropertyMock(return_value=mt)
+
+    db = lambda: None
+    db.find = MagicMock(return_value=m)
+
+    ns.sync_tags(db, {}, {"foo": {"tags": ["foo", "bar"]}})
+
+    db.find.assert_called_once_with("foo")
+
+
+def test_sync_tags_only_theirs_not_found():
+    db = lambda: None
+    db.find = MagicMock()
+    db.find.side_effect = LookupError()
+
+    ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+
+    db.find.assert_called_once_with("foo")
+
+
+def test_sync_tags_only_mine():
+    db = lambda: None
+    ns.sync_tags(db, {"foo": {"tags": ["foo", "bar"]}}, {})
+
+
+def test_sync_tags_mine_theirs_no_overlap():
+    m = MagicMock()
+    m.frozen = MagicMock()
+    m.frozen.__enter__.return_value = None
+    m.frozen.__exit__.return_value = False
+
+    mt = MagicMock(spec=list)
+    tags = ["foo", "bar"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    mt.to_maildir_flags = MagicMock()
+    type(m).tags = PropertyMock(return_value=mt)
+
+    db = lambda: None
+    db.find = MagicMock(return_value=m)
+
+    ns.sync_tags(db, {"bar": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+
+    db.find.assert_called_once_with("foo")
+    m.frozen.assert_called_once()
+    mt.clear.assert_called_once()
+    assert mt.add.mock_calls == [
+        call("bar"),
+        call("foobar")
+    ]
+    mt.to_maildir_flags.assert_called_once()
+
+
+def test_sync_tags_mine_theirs_overlap():
+    m = MagicMock()
+    m.frozen = MagicMock()
+    m.frozen.__enter__.return_value = None
+    m.frozen.__exit__.return_value = False
+
+    mt = MagicMock(spec=list)
+    tags = ["foo", "bar"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    mt.to_maildir_flags = MagicMock()
+    type(m).tags = PropertyMock(return_value=mt)
+
+    db = lambda: None
+    db.find = MagicMock(return_value=m)
+
+    ns.sync_tags(db, {"foo": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+
+    db.find.assert_called_once_with("foo")
+    m.frozen.assert_called_once()
+    mt.clear.assert_called_once()
+    assert mt.add.mock_calls == [
+        call("bar"),
+        call("foobar"),
+        call("tag1"),
+        call("tag2")
+    ]
+    mt.to_maildir_flags.assert_called_once()
 
 
 def test_sync_server(monkeypatch):
@@ -128,7 +251,6 @@ def test_sync_server(monkeypatch):
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value='/foo')
-    db.config = {}
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -162,7 +284,6 @@ def test_sync_server_remote_host(monkeypatch):
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value='/foo')
-    db.config = {}
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
