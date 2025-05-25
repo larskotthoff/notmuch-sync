@@ -161,6 +161,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--mbsync", action="store_true", help="sync mbsync files (.mbsyncstate, .uidvalidity)")
     parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="path to notmuch-sync on remote server")
     parser.add_argument("-c", "--remote-cmd", type=str, help="command to run to sync; overrides --remote, --user, --ssh-cmd, --path")
+    parser.add_argument("-d", "--delete", action="store_true", help="sync deleted messages (requires listing all messages in notmuch database, potentially expensive)")
     args = parser.parse_args()
 
     if args.remote or args.remote_cmd:
