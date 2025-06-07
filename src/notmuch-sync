@@ -56,7 +56,6 @@ def sync_tags(db, changes_mine, changes_theirs):
         tags = set(tags)
         try:
             msg = db.find(id)
-            print(f"{tags}, {msg.tags}")
             if tags != set(msg.tags):
                 with msg.frozen():
                     msg.tags.clear()
@@ -98,7 +97,7 @@ def sync_client(args):
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
-        cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path} --from {socket.getfqdn()}"]
+        cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path} --host {socket.getfqdn()}"]
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
