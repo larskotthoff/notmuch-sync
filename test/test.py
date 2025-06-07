@@ -3,7 +3,7 @@ import os
 import sys
 import io
 from unittest.mock import MagicMock, PropertyMock, call, mock_open, patch
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, gettempdir
 
 import notmuch2
 
@@ -17,21 +17,31 @@ def test_changes():
     mm = lambda: None
     mm.messageid = "foo"
     mm.tags = ["foo", "bar"]
-    mm.filenames = MagicMock(return_value=["/foo/bar", "/foo/foo"])
 
     db = lambda: None
     rev = lambda: None
     rev.rev = 124
     rev.uuid = b'abc'
     db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
     db.messages = MagicMock(return_value=[mm])
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 abc")
         f.flush()
-        changes = ns.get_changes(db, f.name)
-        assert changes == {"foo": {"tags": ["foo", "bar"], "files": ["bar", "foo"]}}
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            f1.write("mail one")
+            f1.flush()
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                f2.write("mail two")
+                f2.flush()
+                mm.filenames = MagicMock(return_value=[f1.name, f2.name])
+                changes = ns.get_changes(db, f.name)
+                assert changes == {"foo": {"tags": ["foo", "bar"], "files":
+                                           [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                             "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
+                                            {"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                             "sha": "17b6d790c2c6dd4c315bba65bd5d877f3a52b26756fadec0fcd6011b5cd38a1a"}]}}
 
     db.revision.assert_called_once()
     db.default_path.assert_called_once()
@@ -42,17 +52,30 @@ def test_changes_first_sync():
     mm = lambda: None
     mm.messageid = "foo"
     mm.tags = ["foo", "bar"]
-    mm.filenames = MagicMock(return_value=["/foo/bar", "/foo/foo"])
 
     db = lambda: None
     rev = lambda: None
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
     db.messages = MagicMock(return_value=[mm])
 
+    # this is only to get a filename that is guaranteed to be unique -- the file
+    # won't exist anymore by the time it is accessed, but that's the point of
+    # this test
     f = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f.close()
-    changes = ns.get_changes(db, f.name)
-    assert changes == {"foo": {"tags": ["foo", "bar"], "files": ["bar", "foo"]}}
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+        f1.write("mail one")
+        f1.flush()
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+            f2.write("mail two")
+            f2.flush()
+            mm.filenames = MagicMock(return_value=[f1.name, f2.name])
+            changes = ns.get_changes(db, f.name)
+            assert changes == {"foo": {"tags": ["foo", "bar"], "files":
+                                       [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                         "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
+                                        {"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                         "sha": "17b6d790c2c6dd4c315bba65bd5d877f3a52b26756fadec0fcd6011b5cd38a1a"}]}}
 
     db.default_path.assert_called_once()
     db.messages.assert_called_once_with("lastmod:0..")

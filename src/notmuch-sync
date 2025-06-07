@@ -7,6 +7,8 @@ import subprocess
 import socket
 import json
 import shlex
+import hashlib
+from pathlib import Path
 
 from contextlib import contextmanager
 
@@ -34,7 +36,8 @@ def get_changes(db, fname):
 
     prefix = os.path.join(str(db.default_path()), '')
     return {msg.messageid: {"tags": list(msg.tags), "files": [
-        str(f).removeprefix(prefix) for f in msg.filenames() ]} for msg in
+        {"name": str(f).removeprefix(prefix),
+         "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames() ]} for msg in
             db.messages(f"lastmod:{rev_prev}..")}
 
 
