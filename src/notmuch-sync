@@ -91,7 +91,12 @@ def sync_server(args):
     #        print("GOODBYE", flush=True)
     #        break
 
-    with initial_changes(args) as (db, changes_mine):
+    changes_mine = []
+    changes_theirs = []
+    # only do tag sync initially to avoid locking db during lengthy file
+    # transfers
+    with initial_changes(args) as (db, tmp):
+        changes_mine = tmp
         print(json.dumps(changes_mine))
         changes_theirs = json.loads(sys.stdin.readline())
         sync_tags(db, changes_mine, changes_theirs)
@@ -115,7 +120,12 @@ def sync_client(args):
     stderr = proc.stderr
     stdin = proc.stdin
 
-    with initial_changes(args) as (db, changes_mine):
+    changes_mine = []
+    changes_theirs = []
+    # only do tag sync initially to avoid locking db during lengthy file
+    # transfers
+    with initial_changes(args) as (db, tmp):
+        changes_mine = tmp
         print(json.dumps(changes_mine), file=stdin)
         changes_theirs = json.loads(stdout.readline())
         sync_tags(db, changes_mine, changes_theirs)
