@@ -358,3 +358,97 @@ def test_sync_server_remote_host(monkeypatch):
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()
+
+
+def test_sync_files_empty():
+    db = lambda: None
+    db.default_path = MagicMock(return_value='/foo')
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        assert {} == ns.sync_files({})
+
+    db.default_path.assert_called_once()
+
+
+def test_sync_files_new():
+    m = MagicMock()
+    m.filenames = MagicMock(return_value=['/foo/bar'])
+    db = lambda: None
+    db.default_path = MagicMock(return_value='/foo')
+
+    def effect(*args, **kwargs):
+        yield m
+        while True:
+            yield LookupError
+    db.find = MagicMock()
+    db.find.side_effect = effect()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    changes = {"foo": {"tags": ["foo"], "files": [{"name": "bar", "sha": "abc"}]},
+               "bar": {"tags": ["bar"], "files": [{"name": "foo", "sha": "def"}]}}
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        exp = {"bar": {"type": "add",
+                       "tags": ["bar"],
+                       "files": [{"name": "foo", "sha": "def"}]}}
+        assert exp == ns.sync_files(changes)
+
+    db.default_path.assert_called_once()
+    m.filenames.assert_called_once()
+    assert db.find.mock_calls == [call('foo'), call('bar')]
+
+
+def test_sync_files_updated():
+    m = MagicMock()
+    m.filenames = MagicMock(return_value=['/foo/bar'])
+    db = lambda: None
+    db.default_path = MagicMock(return_value='/foo')
+
+    db.find = MagicMock(return_value=m)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    changes = {"foo": {"tags": ["foo"], "files": [{"name": "foo", "sha": "abc"}]}}
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        exp = {"foo": {"type": "update",
+                       "files": [{"name": "foo", "sha": "abc"}]}}
+        assert exp == ns.sync_files(changes)
+
+    db.default_path.assert_called_once()
+    db.find.assert_called_once_with("foo")
+    m.filenames.assert_called_once()
+
+
+def test_sync_files_updated_some():
+    m = MagicMock()
+    m.filenames = MagicMock(return_value=['/foo/bar'])
+    db = lambda: None
+    db.default_path = MagicMock(return_value='/foo')
+
+    db.find = MagicMock(return_value=m)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    changes = {"foo": {"tags": ["foo"], "files": [{"name": "bar", "sha": "abc"},
+                                                  {"name": "foo", "sha": "def"}]}}
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        exp = {"foo": {"type": "update",
+                       "files": [{"name": "foo", "sha": "def"}]}}
+        assert exp == ns.sync_files(changes)
+
+    db.default_path.assert_called_once()
+    db.find.assert_called_once_with("foo")
+    m.filenames.assert_called_once()

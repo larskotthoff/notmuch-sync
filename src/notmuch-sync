@@ -72,6 +72,28 @@ def sync_tags(db, changes_mine, changes_theirs):
             pass
 
 
+def sync_files(changes_theirs):
+    ret = {}
+    with notmuch2.Database() as db:
+        prefix = os.path.join(str(db.default_path()), '')
+        for id in changes_theirs:
+            try:
+                msg = db.find(id)
+                fnames_theirs = [ f["name"] for f in changes_theirs[id]["files"] ]
+                fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
+                missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
+                # TODO: check which ones moved
+                if len(missing_mine) > 0:
+                    ret[id] = {"type": "update",
+                               "files": [f for f in changes_theirs[id]["files"] if f["name"] in missing_mine]}
+            except LookupError:
+                # don't have this message; all files missing
+                ret[id] = changes_theirs[id]
+                ret[id]["type"] = "add"
+
+    return ret
+
+
 def sync_server(args):
     #print("READY", flush=True)
     #while True:
