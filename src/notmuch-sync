@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import argparse
 import sys
 import os
 import struct
@@ -153,7 +154,6 @@ def sync_client(args):
     proc.wait()
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--remote", type=str, help="remote host to sync with")
     parser.add_argument("-f", "--host", type=str, help="host to sync with (use with --remote-cmd)")

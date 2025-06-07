@@ -135,6 +135,37 @@ def test_changes_corrupted_file():
     db.revision.assert_called_once()
 
 
+def test_initial_changes():
+    args = lambda: None
+    args.remote = "foo"
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 123
+    rev.uuid = b'abd'
+    db.revision = MagicMock(return_value=rev)
+    db.default_path = MagicMock(return_value=gettempdir())
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-foo")
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch.object(ns, "get_changes", return_value=[]) as gc:
+            with patch("builtins.open", mock_open()) as o:
+                with ns.initial_changes(args) as (db, changes):
+                    assert [] == changes
+                o.assert_called_once_with(fname, "w", encoding="utf-8")
+                hdl = o()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert "123 abd" == args[0]
+            gc.assert_called_once_with(db, fname)
+
+    assert db.revision.call_count == 2
+    db.default_path.assert_called_once()
+
+
 def test_sync_tags_empty():
     db = lambda: None
     ns.sync_tags(db, {}, {})
