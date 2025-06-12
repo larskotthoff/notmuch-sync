@@ -412,6 +412,7 @@ def test_sync_files_moved():
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock()
+    db.remove = MagicMock()
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -431,6 +432,7 @@ def test_sync_files_moved():
 
                     sm.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
+                    db.remove.assert_called_once_with(f1.name)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
