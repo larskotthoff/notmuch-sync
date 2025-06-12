@@ -411,6 +411,7 @@ def test_sync_files_moved():
     db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
+    db.add = MagicMock()
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -427,7 +428,9 @@ def test_sync_files_moved():
                                        "files": [{"name": f2.name.removeprefix(gettempdir() + os.sep),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
                     assert {} == ns.get_missing_files(changes)
-            sm.assert_called_once_with(f1.name, f2.name)
+
+                    sm.assert_called_once_with(f1.name, f2.name)
+                    db.add.assert_called_once_with(f2.name)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
@@ -440,6 +443,7 @@ def test_sync_files_copied():
     db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
+    db.add = MagicMock()
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -460,10 +464,12 @@ def test_sync_files_copied():
                                              {"name": f.name.removeprefix(gettempdir() + os.sep),
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
                 assert {} == ns.get_missing_files(changes)
-            sc.assert_called_once_with(f1.name, f.name)
+
+                sc.assert_called_once_with(f1.name, f.name)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
+    db.add.assert_called_once_with(f.name)
     assert m.filenames.call_count == 2
 
 
