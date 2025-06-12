@@ -405,11 +405,10 @@ def test_sync_files_new():
     assert db.find.mock_calls == [call('foo'), call('bar')]
 
 
-def test_sync_files_updated():
+def test_sync_files_moved():
     m = MagicMock()
-    m.filenames = MagicMock(return_value=['/foo/bar'])
     db = lambda: None
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
 
@@ -417,23 +416,28 @@ def test_sync_files_updated():
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    changes = {"foo": {"tags": ["foo"], "files": [{"name": "foo", "sha": "abc"}]}}
-
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"foo": {"type": "add",
-                       "files": [{"name": "foo", "sha": "abc"}]}}
-        assert exp == ns.get_missing_files(changes)
+        with patch("shutil.move") as sm:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail one")
+                    f1.flush()
+                    changes = {"foo": {"tags": ["foo"],
+                                       "files": [{"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                                  "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    assert {} == ns.get_missing_files(changes)
+            sm.assert_called_once_with(f1.name, f2.name)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
-    m.filenames.assert_called_once()
+    assert m.filenames.call_count == 2
 
 
-def test_sync_files_updated_some():
+def test_sync_files_copied():
     m = MagicMock()
-    m.filenames = MagicMock(return_value=['/foo/bar'])
     db = lambda: None
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
 
@@ -441,14 +445,56 @@ def test_sync_files_updated_some():
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    changes = {"foo": {"tags": ["foo"], "files": [{"name": "bar", "sha": "abc"},
-                                                  {"name": "foo", "sha": "def"}]}}
-
+    # this is only to get a filename that is guaranteed to be unique
+    f = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f.close()
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"foo": {"type": "add",
-                       "files": [{"name": "foo", "sha": "def"}]}}
-        assert exp == ns.get_missing_files(changes)
+        with patch("shutil.copy2") as sc:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                m.filenames = MagicMock(return_value=[f1.name])
+                f1.write("mail one")
+                f1.flush()
+                changes = {"foo": {"tags": ["foo"],
+                                   "files": [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                              "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
+                                             {"name": f.name.removeprefix(gettempdir() + os.sep),
+                                              "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                assert {} == ns.get_missing_files(changes)
+            sc.assert_called_once_with(f1.name, f.name)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
-    m.filenames.assert_called_once()
+    assert m.filenames.call_count == 2
+
+
+def test_sync_files_added():
+    m = MagicMock()
+    db = lambda: None
+    db.default_path = MagicMock(return_value=gettempdir())
+
+    db.find = MagicMock(return_value=m)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.copy2") as sc:
+            with patch("shutil.move") as sm:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail one")
+                    f1.flush()
+                    changes = {"foo": {"tags": ["foo"],
+                                       "files": [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                                  "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
+                                                 {"name": "bar", "sha": "abc"}]}}
+                    exp = {"foo": {"type": "add",
+                                   "files": [{"name": "bar", "sha": "abc"}]}}
+                    assert exp == ns.get_missing_files(changes)
+                assert sm.call_count == 0
+                assert sc.call_count == 0
+
+    db.default_path.assert_called_once()
+    db.find.assert_called_once_with("foo")
+    assert m.filenames.call_count == 2

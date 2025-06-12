@@ -8,6 +8,7 @@ import subprocess
 import socket
 import json
 import shlex
+import shutil
 import hashlib
 from pathlib import Path
 
@@ -38,8 +39,8 @@ def get_changes(db, fname):
     prefix = os.path.join(str(db.default_path()), '')
     return {msg.messageid: {"tags": list(msg.tags), "files": [
         {"name": str(f).removeprefix(prefix),
-         "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames() ]} for msg in
-            db.messages(f"lastmod:{rev_prev}..")}
+         "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames()
+        ]} for msg in db.messages(f"lastmod:{rev_prev}..")}
 
 
 @contextmanager
@@ -83,8 +84,22 @@ def get_missing_files(changes_theirs):
                 fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
                 missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
                 if len(missing_mine) > 0:
-                    ret[id] = {"type": "add",
-                               "files": [f for f in changes_theirs[id]["files"] if f["name"] in missing_mine]}
+                    hashes_mine = [{"name": str(f).removeprefix(prefix),
+                                    "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()}
+                                    for f in msg.filenames()]
+                    for f in changes_theirs[id]["files"]:
+                        if f["name"] in missing_mine:
+                            matches = [ x for x in hashes_mine if f["sha"] == x["sha"] ]
+                            if len(matches) > 0:
+                                if matches[0] in changes_theirs[id]["files"]:
+                                    shutil.copy2(os.path.join(prefix, matches[0]["name"]),
+                                                 os.path.join(prefix, f["name"]))
+                                else:
+                                    shutil.move(os.path.join(prefix, matches[0]["name"]),
+                                                os.path.join(prefix, f["name"]))
+                                missing_mine.remove(f["name"])
+                if len(missing_mine) > 0:
+                    ret[id] = {"type": "add", "files": [f for f in changes_theirs[id]["files"] if f["name"] in missing_mine]}
             except LookupError:
                 # don't have this message; all files missing
                 ret[id] = changes_theirs[id]
