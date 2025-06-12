@@ -455,7 +455,7 @@ def test_sync_files_copied():
     f = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f.close()
     with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy2") as sc:
+        with patch("shutil.copy") as sc:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
                 m.filenames = MagicMock(return_value=[f1.name])
                 f1.write("mail one")
@@ -487,7 +487,7 @@ def test_sync_files_added():
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy2") as sc:
+        with patch("shutil.copy") as sc:
             with patch("shutil.move") as sm:
                 with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
                     m.filenames = MagicMock(return_value=[f1.name])
