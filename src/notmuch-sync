@@ -72,7 +72,7 @@ def sync_tags(db, changes_mine, changes_theirs):
             pass
 
 
-def sync_files(changes_theirs):
+def get_missing_files(changes_theirs):
     ret = {}
     with notmuch2.Database() as db:
         prefix = os.path.join(str(db.default_path()), '')

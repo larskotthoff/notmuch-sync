@@ -369,7 +369,7 @@ def test_sync_files_empty():
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        assert {} == ns.sync_files({})
+        assert {} == ns.get_missing_files({})
 
     db.default_path.assert_called_once()
 
@@ -398,7 +398,7 @@ def test_sync_files_new():
         exp = {"bar": {"type": "add",
                        "tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
-        assert exp == ns.sync_files(changes)
+        assert exp == ns.get_missing_files(changes)
 
     db.default_path.assert_called_once()
     m.filenames.assert_called_once()
@@ -422,7 +422,7 @@ def test_sync_files_updated():
     with patch("notmuch2.Database", return_value=mock_ctx):
         exp = {"foo": {"type": "update",
                        "files": [{"name": "foo", "sha": "abc"}]}}
-        assert exp == ns.sync_files(changes)
+        assert exp == ns.get_missing_files(changes)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
@@ -447,7 +447,7 @@ def test_sync_files_updated_some():
     with patch("notmuch2.Database", return_value=mock_ctx):
         exp = {"foo": {"type": "update",
                        "files": [{"name": "foo", "sha": "def"}]}}
-        assert exp == ns.sync_files(changes)
+        assert exp == ns.get_missing_files(changes)
 
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
