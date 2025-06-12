@@ -395,7 +395,7 @@ def test_sync_files_new():
                "bar": {"tags": ["bar"], "files": [{"name": "foo", "sha": "def"}]}}
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"bar": {"type": "add",
+        exp = {"bar": {"type": "new",
                        "tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
         assert exp == ns.get_missing_files(changes)
@@ -420,7 +420,7 @@ def test_sync_files_updated():
     changes = {"foo": {"tags": ["foo"], "files": [{"name": "foo", "sha": "abc"}]}}
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"foo": {"type": "update",
+        exp = {"foo": {"type": "add",
                        "files": [{"name": "foo", "sha": "abc"}]}}
         assert exp == ns.get_missing_files(changes)
 
@@ -445,7 +445,7 @@ def test_sync_files_updated_some():
                                                   {"name": "foo", "sha": "def"}]}}
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"foo": {"type": "update",
+        exp = {"foo": {"type": "add",
                        "files": [{"name": "foo", "sha": "def"}]}}
         assert exp == ns.get_missing_files(changes)
 
