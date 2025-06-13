@@ -31,7 +31,7 @@ def get_changes(db, fname):
                 if rev_prev > revision.rev:
                     sys.exit(f"Last sync revision {rev_prev} larger than current DB revision {revision.rev}, aborting...")
             except Exception:
-                sys.exit(f"Sync state file {fname} corrupted, delete to sync from scratch.")
+                sys.exit(f"Sync state file '{fname}' corrupted, delete to sync from scratch.")
     except FileNotFoundError:
         # no previous sync or sync file broken, leave rev_prev at 0 as this will sync entire DB
         pass
@@ -125,7 +125,7 @@ def send_files(prefix, from_stream, to_stream):
     while line != "SEND_END":
         cmd, _, fname = line.partition(' ')
         if cmd != "SEND":
-            raise ValueError(f"Expected SEND, got {line}!")
+            raise ValueError(f"Expected SEND, got '{line}'!")
         send_file(os.path.join(prefix, fname), to_stream)
         line = from_stream.readline().strip()
 
@@ -135,7 +135,7 @@ def recv_file(fname, stream, sha):
     contents = ''.join([ stream.readline() for i in range(0, nlines) ])
     sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
     if sha_mine != sha:
-        raise ValueError(f"Checksum of received file {sha_mine} does not match expected {sha}!")
+        raise ValueError(f"Checksum of received file '{fname}' ({sha_mine}) does not match expected ({sha})!")
     with open(fname, "w", encoding="utf-8") as f:
         f.write(contents)
 
@@ -160,24 +160,6 @@ def recv_files(prefix, missing, from_stream, to_stream):
 
 
 def sync_server(args):
-    #print("READY", flush=True)
-    #while True:
-    #    line = sys.stdin.readline()
-    #    if not line:
-    #        break
-    #    line = line.strip()
-    #    if line.startswith("SEND_FILE"):
-    #        _, filename = line.split(maxsplit=1)
-    #        size_data = sys.stdin.buffer.read(4)
-    #        size = struct.unpack("!I", size_data)[0]
-    #        content = sys.stdin.buffer.read(size)
-    #        with open(f"received_{os.path.basename(filename)}", "wb") as f:
-    #            f.write(content)
-    #        print(f"RECEIVED {filename}", flush=True)
-    #    elif line == "BYE":
-    #        print("GOODBYE", flush=True)
-    #        break
-
     changes_mine = []
     changes_theirs = []
     # only do tag sync initially to avoid locking db during lengthy file
@@ -216,34 +198,6 @@ def sync_client(args):
         print(json.dumps(changes_mine), file=stdin)
         changes_theirs = json.loads(stdout.readline())
         sync_tags(db, changes_mine, changes_theirs)
-
-    ## Wait for "READY"
-    #ready_line = stdout.readline()
-    #if not ready_line.strip().decode().startswith("READY"):
-    #    print("Remote script did not start correctly.")
-    #    return
-
-    #for file_path in files:
-    #    filename = os.path.basename(file_path)
-    #    with open(file_path, "rb") as f:
-    #        content = f.read()
-
-    #    # Send metadata
-    #    stdin.write(f"SEND_FILE {filename}\n".encode())
-    #    stdin.flush()
-
-    #    # Send file length and data
-    #    stdin.write(struct.pack("!I", len(content)))
-    #    stdin.write(content)
-    #    stdin.flush()
-
-    #    # Read acknowledgment
-    #    print(stdout.readline().strip().decode())
-
-    #stdin.write(b"BYE\n")
-    #stdin.flush()
-
-    #print(stderr.read(), file=sys.stderr)
 
     stdin.close()
     stdout.close()

@@ -130,7 +130,7 @@ def test_changes_corrupted_file():
         with pytest.raises(SystemExit) as pwe:
             ns.get_changes(db, f.name)
         assert pwe.type == SystemExit
-        assert pwe.value.code == f"Sync state file {f.name} corrupted, delete to sync from scratch."
+        assert pwe.value.code == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
 
     db.revision.assert_called_once()
 
@@ -547,7 +547,7 @@ def test_send_files_garbage():
     with pytest.raises(ValueError) as pwe:
         ns.send_files(gettempdir(), istream, ostream)
     assert pwe.type == ValueError
-    assert str(pwe.value) == "Expected SEND, got LKSHDF!"
+    assert str(pwe.value) == "Expected SEND, got 'LKSHDF'!"
     out = ostream.getvalue()
     assert "" == out
 
@@ -571,7 +571,7 @@ def test_recv_file_checksum():
         with pytest.raises(ValueError) as pwe:
             ns.recv_file("foo", stream, "abc")
         assert pwe.type == ValueError
-        assert str(pwe.value) == "Checksum of received file 3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3 does not match expected abc!"
+        assert str(pwe.value) == "Checksum of received file 'foo' (3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3) does not match expected (abc)!"
         assert o.call_count == 0
 
 
