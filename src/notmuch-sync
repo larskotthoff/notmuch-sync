@@ -112,6 +112,24 @@ def get_missing_files(changes_theirs):
     return ret
 
 
+def send_file(fname, stream):
+    with open(fname, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+        print(len(lines), file=stream)
+        for line in lines:
+            print(line, file=stream, end='')
+
+
+def recv_file(fname, stream, sha):
+    nlines = int(stream.readline())
+    contents = ''.join([ stream.readline() for i in range(0, nlines) ])
+    sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
+    if sha_mine != sha:
+        raise ValueError(f"Checksum of received file {sha_mine} does not match expected {sha}!")
+    with open(fname, "w", encoding="utf-8") as f:
+        f.write(contents)
+
+
 def sync_server(args):
     #print("READY", flush=True)
     #while True:

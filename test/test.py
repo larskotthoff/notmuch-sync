@@ -91,10 +91,10 @@ def test_changes_changed_uuid():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 abc")
         f.flush()
-        with pytest.raises(SystemExit) as pytest_wrapped_e:
+        with pytest.raises(SystemExit) as pwe:
             ns.get_changes(db, f.name)
-        assert pytest_wrapped_e.type == SystemExit
-        assert pytest_wrapped_e.value.code == "Last sync with UUID abc, but notmuch DB has UUID abd, aborting..."
+        assert pwe.type == SystemExit
+        assert pwe.value.code == "Last sync with UUID abc, but notmuch DB has UUID abd, aborting..."
 
     db.revision.assert_called_once()
 
@@ -109,10 +109,10 @@ def test_changes_later_rev():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 abc")
         f.flush()
-        with pytest.raises(SystemExit) as pytest_wrapped_e:
+        with pytest.raises(SystemExit) as pwe:
             ns.get_changes(db, f.name)
-        assert pytest_wrapped_e.type == SystemExit
-        assert pytest_wrapped_e.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
+        assert pwe.type == SystemExit
+        assert pwe.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
 
     db.revision.assert_called_once()
 
@@ -127,10 +127,10 @@ def test_changes_corrupted_file():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123abc")
         f.flush()
-        with pytest.raises(SystemExit) as pytest_wrapped_e:
+        with pytest.raises(SystemExit) as pwe:
             ns.get_changes(db, f.name)
-        assert pytest_wrapped_e.type == SystemExit
-        assert pytest_wrapped_e.value.code == f"Sync state file {f.name} corrupted, delete to sync from scratch."
+        assert pwe.type == SystemExit
+        assert pwe.value.code == f"Sync state file {f.name} corrupted, delete to sync from scratch."
 
     db.revision.assert_called_once()
 
@@ -506,3 +506,37 @@ def test_sync_files_added():
     db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
     assert m.filenames.call_count == 2
+
+
+def test_send_file():
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-", delete_on_close=False) as f1:
+        f1.write("mail one\n")
+        f1.write("mail\n")
+        f1.close()
+        stream = io.StringIO()
+        ns.send_file(f1.name, stream)
+        out = stream.getvalue()
+        assert "2\nmail one\nmail\n" == out
+
+
+def test_recv_file():
+    fname = "foo"
+    with patch("builtins.open", mock_open()) as o:
+        stream = io.StringIO("2\nmail one\nmail\n")
+        ns.recv_file("foo", stream, "3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3")
+        o.assert_called_once_with("foo", "w", encoding="utf-8")
+        hdl = o()
+        hdl.write.assert_called_once()
+        args = hdl.write.call_args.args
+        assert "mail one\nmail\n" == args[0]
+
+
+def test_recv_file_checksum():
+    fname = "foo"
+    with patch("builtins.open", mock_open()) as o:
+        stream = io.StringIO("2\nmail one\nmail\n")
+        with pytest.raises(ValueError) as pwe:
+            ns.recv_file("foo", stream, "abc")
+        assert pwe.type == ValueError
+        assert str(pwe.value) == "Checksum of received file 3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3 does not match expected abc!"
+        assert o.call_count == 0
