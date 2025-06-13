@@ -519,6 +519,39 @@ def test_send_file():
         assert "2\nmail one\nmail\n" == out
 
 
+def test_send_files():
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-", delete_on_close=False) as f1:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-", delete_on_close=False) as f2:
+            f1.write("mail one\n")
+            f1.close()
+            f2.write("mail two\n")
+            f2.close()
+            istream = io.StringIO(f"SEND {f1.name.removeprefix(gettempdir() + os.sep)}\nSEND {f2.name.removeprefix(gettempdir() + os.sep)}\nSEND_END")
+            ostream = io.StringIO()
+            ns.send_files(gettempdir(), istream, ostream)
+            out = ostream.getvalue()
+            assert "1\nmail one\n1\nmail two\n" == out
+
+
+def test_send_files_nothing():
+    istream = io.StringIO(f"SEND_END")
+    ostream = io.StringIO()
+    ns.send_files(gettempdir(), istream, ostream)
+    out = ostream.getvalue()
+    assert "" == out
+
+
+def test_send_files_garbage():
+    istream = io.StringIO(f"LKSHDF")
+    ostream = io.StringIO()
+    with pytest.raises(ValueError) as pwe:
+        ns.send_files(gettempdir(), istream, ostream)
+    assert pwe.type == ValueError
+    assert str(pwe.value) == "Expected SEND, got LKSHDF!"
+    out = ostream.getvalue()
+    assert "" == out
+
+
 def test_recv_file():
     fname = "foo"
     with patch("builtins.open", mock_open()) as o:
@@ -540,3 +573,118 @@ def test_recv_file_checksum():
         assert pwe.type == ValueError
         assert str(pwe.value) == "Checksum of received file 3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3 does not match expected abc!"
         assert o.call_count == 0
+
+
+def test_recv_files_nothing():
+    istream = io.StringIO()
+    ostream = io.StringIO()
+    ns.recv_files(gettempdir(), {}, istream, ostream)
+    out = ostream.getvalue()
+    assert "SEND_END\n" == out
+
+
+
+def test_recv_files_add():
+    istream = io.StringIO("1\nmail one\n1\nmail two\n")
+    ostream = io.StringIO()
+
+    # this is only to get filenames that are guaranteed to be unique
+    f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f1.close()
+    f1name = f1.name.removeprefix(gettempdir() + os.sep)
+    f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f2.close()
+    f2name = f2.name.removeprefix(gettempdir() + os.sep)
+    missing = {"foo": {"type": "add",
+                       "files": [{"name": f1name,
+                                  "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
+                                 {"name": f2name,
+                                  "sha": "0e131e4c8a24e636c44e8f6ae155df8bec777e63a4830b1770e9f9f1e1c26667"}]}}
+
+    db = lambda: None
+    db.add = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("builtins.open", mock_open()) as o:
+        with patch("notmuch2.Database", return_value=mock_ctx):
+            ns.recv_files(gettempdir(), missing, istream, ostream)
+            assert call(f1.name, "w", encoding="utf-8") in o.mock_calls
+            assert call().write('mail one\n') in o.mock_calls
+            assert call(f2.name, "w", encoding="utf-8") in o.mock_calls
+            assert call().write('mail two\n') in o.mock_calls
+            hdl = o()
+            assert hdl.write.call_count == 2
+
+    assert db.add.mock_calls == [
+        call(f1.name),
+        call(f2.name)
+    ]
+    out = ostream.getvalue()
+    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out
+
+
+def test_recv_files_new():
+    istream = io.StringIO("1\nmail one\n1\nmail two\n")
+    ostream = io.StringIO()
+
+    # this is only to get filenames that are guaranteed to be unique
+    f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f1.close()
+    f1name = f1.name.removeprefix(gettempdir() + os.sep)
+    f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f2.close()
+    f2name = f2.name.removeprefix(gettempdir() + os.sep)
+    missing = {"foo": {"type": "new",
+                       "tags": ["foo", "bar"],
+                       "files": [{"name": f1name,
+                                  "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
+                                 {"name": f2name,
+                                  "sha": "0e131e4c8a24e636c44e8f6ae155df8bec777e63a4830b1770e9f9f1e1c26667"}]}}
+
+    m = MagicMock()
+    m.frozen = MagicMock()
+    m.frozen.__enter__.return_value = None
+    m.frozen.__exit__.return_value = False
+
+    mt = MagicMock(spec=list)
+    mt.__iter__.return_value = iter([])
+    mt.__len__.return_value = 0
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    type(m).tags = PropertyMock(return_value=mt)
+
+    db = lambda: None
+    db.add = MagicMock()
+    db.find = MagicMock(return_value=m)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("builtins.open", mock_open()) as o:
+        with patch("notmuch2.Database", return_value=mock_ctx):
+            ns.recv_files(gettempdir(), missing, istream, ostream)
+            assert call(f1.name, "w", encoding="utf-8") in o.mock_calls
+            assert call().write('mail one\n') in o.mock_calls
+            assert call(f2.name, "w", encoding="utf-8") in o.mock_calls
+            assert call().write('mail two\n') in o.mock_calls
+            hdl = o()
+            assert hdl.write.call_count == 2
+
+    assert db.add.mock_calls == [
+        call(f1.name),
+        call(f2.name)
+    ]
+    db.find.assert_called_once_with("foo")
+    m.frozen.assert_called_once()
+    mt.clear.assert_called_once()
+    assert mt.add.mock_calls == [
+        call("foo"),
+        call("bar")
+    ]
+
+    out = ostream.getvalue()
+    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out
