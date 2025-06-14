@@ -15,7 +15,7 @@ jobs:
     - uses: actions/checkout@v4
     - run: sudo cp $GITHUB_WORKSPACE/src/notmuch-sync /usr/bin/
 
-    - run: sudo apt-get install -y notmuch libnotmuch-dev wget ssh
+    - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 wget ssh
 
     - run: echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
     - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
