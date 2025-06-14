@@ -43,7 +43,7 @@ jobs:
     - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
     - run: sudo service ssh start
 
-    - run: notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+    - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
 
     - run: notmuch count '*' > /tmp/local.count
     - run: sudo -u synctest notmuch count '*' > /tmp/remote.count
@@ -56,6 +56,6 @@ jobs:
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
     - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
 
-    - run: notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+    - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
     - run: diff -rq ~/notmuch-list /home/synctest/notmuch-list || exit 0
     - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
