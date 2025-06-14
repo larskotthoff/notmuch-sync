@@ -30,9 +30,7 @@ jobs:
     - run: echo -e "[database]\npath=/home/synctest/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
     - run: sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
     - run: sudo -u synctest mkdir /home/synctest/notmuch-list
-    - run: sudo -u synctest notmuch new
-      env:
-        XDG_CONFIG_HOME: /home/synctest/.config
+    - run: sudo -u synctest XDG_CONFIG_HOME=/home/synctest/.config notmuch new
 
     - run: mkdir ~/.ssh
     - run: chmod 700 ~/.ssh
@@ -48,9 +46,7 @@ jobs:
     - run: notmuch-sync --remote localhost --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
 
     - run: notmuch count '*' > /tmp/local.count
-    - run: sudo -u synctest notmuch count '*' > /tmp/remote.count
-      env:
-        XDG_CONFIG_HOME: /home/synctest/.config
+    - run: sudo -u synctest XDG_CONFIG_HOME=/home/synctest/.config notmuch count '*' > /tmp/remote.count
 
     - run: if [ `cat /tmp/server.count` -neq `cat /tmp/client.count` ]; then exit 1; fi
     - run: diff -rq ~/notmuch-list /home/synctest/notmuch-list || exit 0
@@ -58,12 +54,8 @@ jobs:
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
     - run: notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
-    - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
-      env:
-        XDG_CONFIG_HOME: /home/synctest/.config
+    - run: sudo -u synctest XDG_CONFIG_HOME=/home/synctest/.config if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
 
     - run: notmuch-sync --remote localhost --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
     - run: diff -rq ~/notmuch-list /home/synctest/notmuch-list || exit 0
-    - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
-      env:
-        XDG_CONFIG_HOME: /home/synctest/.config
+    - run: sudo -u synctest XDG_CONFIG_HOME=/home/synctest/.config if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
