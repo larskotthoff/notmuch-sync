@@ -120,6 +120,7 @@ def send_file(fname, stream):
         stream.flush()
         for line in lines:
             print(line, file=stream, end='')
+            print(f"Sent line {line}", file=sys.stderr)
             stream.flush()
 
 
