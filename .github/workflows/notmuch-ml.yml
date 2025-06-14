@@ -26,7 +26,7 @@ jobs:
     - run: notmuch tag +question body:question or subject:'?'
     - run: notmuch tag +todo date:1M.. and tag:patch
 
-    - run: sudo useradd --disabled-password -m -p "foo" synctest
+    - run: sudo useradd -m -p "foo" synctest
     - run: sudo -u synctest mkdir /home/synctest/notmuch-list
     - run: echo -e "[database]\npath=/home/synctest/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
     - run: sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
