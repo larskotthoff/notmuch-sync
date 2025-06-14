@@ -19,7 +19,7 @@ jobs:
 
     - run: echo -e "[database]\npath=$HOME/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
     - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
-    - run: ls notmuch-list && cat .notmuch-config
+    - run: ls notmuch-list && cat ~/.notmuch-config
     - run: notmuch new
     - run: notmuch tag -unread date:..1M
     - run: notmuch tag +patch subject:patch or attachment:.patch
