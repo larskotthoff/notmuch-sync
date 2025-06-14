@@ -120,19 +120,16 @@ def send_file(fname, stream):
         stream.flush()
         for line in lines:
             print(line, file=stream, end='')
-            print(f"Sent line {line}", file=sys.stderr)
             stream.flush()
 
 
 def send_files(prefix, from_stream, to_stream):
     line = from_stream.readline().strip()
     while line != "SEND_END":
-        print(line, file=sys.stderr)
         cmd, _, fname = line.partition(' ')
         if cmd != "SEND":
             raise ValueError(f"Expected SEND, got '{line}'!")
         send_file(os.path.join(prefix, fname), to_stream)
-        print(f"Sent {fname}", file=sys.stderr)
         line = from_stream.readline().strip()
 
 
@@ -140,6 +137,7 @@ def recv_file(fname, stream, sha):
     nlines = int(stream.readline())
     contents = ''.join([ stream.readline() for i in range(0, nlines) ])
     sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
+    print(sha_mine, sha, file=sys.stderr)
     if sha_mine != sha:
         raise ValueError(f"Checksum of received file '{fname}' ({sha_mine}) does not match expected ({sha})!")
     with open(fname, "w", encoding="utf-8") as f:
