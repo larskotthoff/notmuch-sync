@@ -17,8 +17,9 @@ jobs:
 
     - run: sudo apt-get install -y notmuch libnotmuch-dev wget ssh
 
-    - run: echo -e "[database]\npath=/home/runner/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
+    - run: echo -e "[database]\npath=$HOME/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
     - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
+    - run: ls notmuch-list && cat .notmuch-config
     - run: notmuch new
     - run: notmuch tag -unread date:..1M
     - run: notmuch tag +patch subject:patch or attachment:.patch
@@ -26,11 +27,13 @@ jobs:
     - run: notmuch tag +question body:question or subject:'?'
     - run: notmuch tag +todo date:1M.. and tag:patch
 
-    - run: sudo useradd -m -p "foo" synctest
-    - run: sudo -u synctest mkdir /home/synctest/notmuch-list
+    - run: sudo adduser --disabled-password --gecos "synctest" synctest
     - run: echo -e "[database]\npath=/home/synctest/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
     - run: sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
+    - run: sudo -u synctest mkdir /home/synctest/notmuch-list
     - run: sudo -u synctest notmuch new
+      env:
+        NOTMUCH_CONFIG: /home/synctest/.notmuch-config
 
     - run: mkdir ~/.ssh
     - run: chmod 700 ~/.ssh
