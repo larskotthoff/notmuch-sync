@@ -161,3 +161,58 @@ def test_sync_tags_files(shell):
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert re.match('6 [0-9a-z-]+', f.read())
+
+
+def test_sync_tags_files_none_remote(shell):
+    with TemporaryDirectory() as local:
+        with TemporaryDirectory() as remote:
+            (local_conf, remote_conf) = init(shell, local, remote)
+            Path.unlink(os.path.join(remote, "mails", "attachment.eml"))
+            Path.unlink(os.path.join(remote, "mails", "calendar.eml"))
+            Path.unlink(os.path.join(remote, "mails", "html-only.eml"))
+            Path.unlink(os.path.join(remote, "mails", "simple.eml"))
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+
+            assert shell.run("notmuch", "tag", "+local", "id:87d1dajhgf.fsf@example.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+local", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+local", "id:20111101080303.30A10409E@asxas.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+local", "id:874llc2bkp.fsf@curie.anarc.at",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+
+            sync(shell, local_conf, remote_conf)
+
+            assert Path(os.path.join(remote, "mails", "attachment.eml")).exists()
+            assert Path(os.path.join(remote, "mails", "calendar.eml")).exists()
+            assert Path(os.path.join(remote, "mails", "html-only.eml")).exists()
+            assert Path(os.path.join(remote, "mails", "simple.eml")).exists()
+
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:874llc2bkp.fsf@curie.anarc.at",
+                             env={"NOTMUCH_CONFIG": local_conf}).data == ["attachment", "local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:874llc2bkp.fsf@curie.anarc.at",
+                             env={"NOTMUCH_CONFIG": remote_conf}).data == ["attachment", "local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org",
+                             env={"NOTMUCH_CONFIG": local_conf}).data == ["local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org",
+                             env={"NOTMUCH_CONFIG": remote_conf}).data == ["local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:20111101080303.30A10409E@asxas.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).data == ["attachment", "local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:20111101080303.30A10409E@asxas.net",
+                             env={"NOTMUCH_CONFIG": remote_conf}).data == ["attachment", "local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:87d1dajhgf.fsf@example.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).data == ["local"]
+            assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:87d1dajhgf.fsf@example.net",
+                             env={"NOTMUCH_CONFIG": remote_conf}).data == ["local"]
+
+            local_sync_file = os.path.join(local, ".notmuch", "notmuch-sync-remote")
+            assert os.path.exists(local_sync_file)
+            with open(local_sync_file, "r", encoding="utf-8") as f:
+                assert re.match('8 [0-9a-z-]+', f.read())
+
+            remote_sync_file = os.path.join(remote, ".notmuch", "notmuch-sync-local")
+            assert os.path.exists(remote_sync_file)
+            with open(remote_sync_file, "r", encoding="utf-8") as f:
+                assert re.match('0 [0-9a-z-]+', f.read())
