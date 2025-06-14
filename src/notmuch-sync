@@ -116,8 +116,10 @@ def send_file(fname, stream):
     with open(fname, "r", encoding="utf-8") as f:
         lines = f.readlines()
         print(len(lines), file=stream)
+        stream.flush()
         for line in lines:
             print(line, file=stream, end='')
+            stream.flush()
 
 
 def send_files(prefix, from_stream, to_stream):
@@ -144,6 +146,7 @@ def recv_files(prefix, missing, from_stream, to_stream):
     for id in missing:
         for f in missing[id]["files"]:
             print(f"SEND {f["name"]}", file=to_stream)
+            to_stream.flush()
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream, f["sha"])
             with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
@@ -157,18 +160,26 @@ def recv_files(prefix, missing, from_stream, to_stream):
                         for tag in missing[id]["tags"]:
                             msg.tags.add(tag)
     print("SEND_END", file=to_stream)
+    to_stream.flush()
 
 
 def sync_server(args):
     changes_mine = []
     changes_theirs = []
+    prefix = ''
     # only do tag sync initially to avoid locking db during lengthy file
     # transfers
-    with initial_changes(args) as (db, tmp):
+    with initial_changes(args) as (dbw, tmp):
+        prefix = os.path.join(str(dbw.default_path()), '')
         changes_mine = tmp
         print(json.dumps(changes_mine))
+        sys.stdout.flush()
         changes_theirs = json.loads(sys.stdin.readline())
-        sync_tags(db, changes_mine, changes_theirs)
+        sync_tags(dbw, changes_mine, changes_theirs)
+
+    missing = get_missing_files(changes_theirs)
+    send_files(prefix, sys.stdin, sys.stdout)
+    recv_files(prefix, missing, sys.stdin, sys.stdout)
 
 
 def sync_client(args):
@@ -185,23 +196,34 @@ def sync_client(args):
         bufsize=1
     )
 
-    stdout = proc.stdout
-    stderr = proc.stderr
-    stdin = proc.stdin
+    from_remote = proc.stdout
+    err_remote = proc.stderr
+    to_remote = proc.stdin
 
     changes_mine = []
     changes_theirs = []
+    prefix = ''
     # only do tag sync initially to avoid locking db during lengthy file
     # transfers
-    with initial_changes(args) as (db, tmp):
+    with initial_changes(args) as (dbw, tmp):
+        prefix = os.path.join(str(dbw.default_path()), '')
         changes_mine = tmp
-        print(json.dumps(changes_mine), file=stdin)
-        changes_theirs = json.loads(stdout.readline())
-        sync_tags(db, changes_mine, changes_theirs)
+        changes_theirs = json.loads(from_remote.readline())
+        print(json.dumps(changes_mine), file=to_remote)
+        to_remote.flush()
+        sync_tags(dbw, changes_mine, changes_theirs)
 
-    stdin.close()
-    stdout.close()
-    stderr.close()
+    missing = get_missing_files(changes_theirs)
+    recv_files(prefix, missing, from_remote, to_remote)
+    send_files(prefix, from_remote, to_remote)
+
+    err = err_remote.read()
+    if err:
+        print(f"Remote error: {err}", file=sys.stderr)
+
+    to_remote.close()
+    from_remote.close()
+    err_remote.close()
     proc.wait()
 
 if __name__ == "__main__":

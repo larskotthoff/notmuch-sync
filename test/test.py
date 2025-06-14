@@ -314,7 +314,7 @@ def test_sync_server(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                monkeypatch.setattr(sys, "stdin", io.StringIO('{}'))
+                monkeypatch.setattr(sys, "stdin", io.StringIO('{}\nSEND_END'))
                 ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
@@ -324,7 +324,7 @@ def test_sync_server(monkeypatch):
             gc.assert_called_once_with(db, fname)
 
     assert db.revision.call_count == 2
-    db.default_path.assert_called_once()
+    assert db.default_path.call_count == 3
 
 
 def test_sync_server_remote_host(monkeypatch):
@@ -347,7 +347,7 @@ def test_sync_server_remote_host(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                monkeypatch.setattr(sys, "stdin", io.StringIO('{}'))
+                monkeypatch.setattr(sys, "stdin", io.StringIO('{}\nSEND_END'))
                 ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
@@ -357,7 +357,7 @@ def test_sync_server_remote_host(monkeypatch):
             gc.assert_called_once_with(db, fname)
 
     assert db.revision.call_count == 2
-    db.default_path.assert_called_once()
+    assert db.default_path.call_count == 3
 
 
 def test_sync_files_empty():
