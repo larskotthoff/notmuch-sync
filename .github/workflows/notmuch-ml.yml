@@ -1,0 +1,60 @@
+name: notmuch-sync with notmuch mailing list archive
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  notmuch-ml:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    - run: cp $GITHUB_WORKSPACE/src/notmuch-sync /usr/bin/
+
+    - run: sudo apt-get install -y notmuch libnotmuch-dev wget ssh
+
+    - run: echo -e "[database]\npath=$HOME/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
+    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
+    - run: notmuch new
+    - run: notmuch tag -unread date:..1M
+    - run: notmuch tag +patch subject:patch or attachment:.patch
+    - run: notmuch tag +bug subject:bug or body:bug
+    - run: notmuch tag +question body:question or subject:'?'
+    - run: notmuch tag +todo date:1M.. and tag:patch
+
+    - run: sudo adduser --disabled-password --gecos "synctest" synctest
+    - run: sudo -U synctest mkdir ~/notmuch-list
+    - run: sudo -U synctest echo -e "[database]\npath=$HOME/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /home/synctest/.notmuch-config
+    - run: sudo -U synctest notmuch new
+
+    - run: mkdir ~/.ssh
+    - run: chmod 700 ~/.ssh
+    - run: ssh-keygen -N "" -f ~/.ssh/test
+
+    - run: sudo -U synctest mkdir ~/.ssh
+    - run: sudo -U synctest chmod 700 ~/.ssh
+    - run: sudo cp $HOME/.ssh/test.pub /home/synctest/.ssh/authorized_keys
+    - run: sudo chown synctest /home/synctest/.ssh/authorized_keys
+    - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
+    - run: sudo service ssh start
+
+    - run: notmuch-sync --remote localhost --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+
+    - run: notmuch count '*' > /tmp/local.count
+    - run: sudo -U synctest notmuch count '*' > /tmp/remote.count
+
+    - run: if [ `cat /tmp/server.count` -neq `cat /tmp/client.count` ]; then exit 1; fi
+    - run: diff -rq $HOME/notmuch-list /home/synctest/notmuch-list || exit 0
+    
+    - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
+    - run: notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
+    - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
+    - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
+
+    - run: notmuch-sync --remote localhost --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+    - run: diff -rq $HOME/notmuch-list /home/synctest/notmuch-list || exit 0
+    - run: sudo -u synctest if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
