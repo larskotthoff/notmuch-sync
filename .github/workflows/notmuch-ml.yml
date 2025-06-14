@@ -29,7 +29,7 @@ jobs:
     - run: sudo adduser --disabled-password --gecos "synctest" synctest
     - run: sudo -u synctest mkdir /home/synctest/notmuch-list
     - run: echo -e "[database]\npath=/home/synctest/notmuch-list\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
-    - run: sudo -u synctest mv /tmp/.notmuch-config /home/synctest/
+    - run: sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
     - run: sudo -u synctest notmuch new
 
     - run: mkdir ~/.ssh
