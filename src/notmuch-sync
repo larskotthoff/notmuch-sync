@@ -6,6 +6,7 @@ import os
 import struct
 import subprocess
 import socket
+import select
 import json
 import shlex
 import shutil
@@ -213,14 +214,17 @@ def sync_client(args):
         to_remote.flush()
         sync_tags(dbw, changes_mine, changes_theirs)
 
-    missing = get_missing_files(changes_theirs)
-    print(missing)
-    recv_files(prefix, missing, from_remote, to_remote)
-    send_files(prefix, from_remote, to_remote)
+    if select.select([err_remote], [], [], 0)[0]:
+        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
 
-    err = err_remote.read()
-    if err:
-        print(f"Remote error: {err}", file=sys.stderr)
+    missing = get_missing_files(changes_theirs)
+    recv_files(prefix, missing, from_remote, to_remote)
+    if select.select([err_remote], [], [], 0)[0]:
+        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
+
+    send_files(prefix, from_remote, to_remote)
+    if select.select([err_remote], [], [], 0)[0]:
+        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
 
     to_remote.close()
     from_remote.close()
