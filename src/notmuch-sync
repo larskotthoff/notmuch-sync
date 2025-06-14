@@ -125,6 +125,7 @@ def send_file(fname, stream):
 
 def send_files(prefix, from_stream, to_stream):
     line = from_stream.readline().strip()
+    print(line, file=sys.stderr)
     while line != "SEND_END":
         cmd, _, fname = line.partition(' ')
         if cmd != "SEND":
