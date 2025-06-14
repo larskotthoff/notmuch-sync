@@ -2,9 +2,9 @@ name: notmuch-sync with notmuch mailing list archive
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "master" ]
+    branches: [ "main" ]
 
 jobs:
   notmuch-ml:
