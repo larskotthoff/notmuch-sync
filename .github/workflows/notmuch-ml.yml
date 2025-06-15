@@ -18,7 +18,7 @@ jobs:
     - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 wget ssh
 
     - run: echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
-    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
+    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz notmuch-list/2018-02
     - run: notmuch new
     - run: notmuch tag -unread date:..1M
     - run: notmuch tag +patch subject:patch or attachment:.patch
@@ -43,7 +43,6 @@ jobs:
     - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
     - run: sudo service ssh start
 
-    - run: ssh -i ~/.ssh/test -o StrictHostKeyChecking=no synctest@localhost notmuch new
     - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
 
     - run: notmuch count '*' > /tmp/local.count

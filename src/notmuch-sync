@@ -207,6 +207,7 @@ def sync_client(args):
         changes_mine = tmp
         changes_theirs = json.loads(from_remote.readline())
         print(json.dumps(changes_mine), file=to_remote)
+        print(json.dumps(changes_mine), file=sys.stderr)
         to_remote.flush()
         sync_tags(dbw, changes_mine, changes_theirs)
 
