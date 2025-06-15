@@ -135,12 +135,7 @@ def send_files(prefix, from_stream, to_stream):
 def recv_file(fname, stream, sha):
     nlines = int(stream.readline())
     print(nlines, file=sys.stderr)
-    contents = []
-    for i in range(nlines):
-        l = stream.readline()
-        print(i, l, file=sys.stderr)
-        contents.append(l)
-    contents = ''.join(contents)
+    contents = ''.join([ stream.readline() for _ in range(nlines) ])
     print(contents, file=sys.stderr)
     sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
     if sha_mine != sha:
@@ -220,7 +215,6 @@ def sync_client(args):
 
         missing = get_missing_files(changes_theirs)
         recv_files(prefix, missing, from_remote, to_remote)
-
         send_files(prefix, from_remote, to_remote)
     finally:
         if select.select([err_remote], [], [], 0)[0]:
