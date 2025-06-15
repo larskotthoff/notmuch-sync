@@ -113,41 +113,37 @@ def get_missing_files(changes_theirs):
 
 
 def send_file(fname, stream):
-    print(fname, file=sys.stderr)
-    with open(fname, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-        print(len(lines), file=stream)
+    with open(fname, "rb") as f:
+        content = f.read()
+        stream.write(struct.pack("!I", len(content)))
+        stream.write(content)
         stream.flush()
-        for line in lines:
-            print(line, file=stream, end='')
-            stream.flush()
 
 
 def send_files(prefix, from_stream, to_stream):
-    line = from_stream.readline().strip()
-    while line != "SEND_END":
+    while (line := from_stream.readline().decode("utf-8").strip()) != "SEND_END":
         cmd, _, fname = line.partition(' ')
         if cmd != "SEND":
             raise ValueError(f"Expected SEND, got '{line}'!")
         send_file(os.path.join(prefix, fname), to_stream)
-        line = from_stream.readline().strip()
 
 
 def recv_file(fname, stream, sha):
-    nlines = int(stream.readline())
-    contents = ''.join([ stream.readline() for _ in range(nlines) ])
-    sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
+    size_data = stream.read(4)
+    size = struct.unpack("!I", size_data)[0]
+    content = stream.read(size)
+    sha_mine = hashlib.new("sha256", content).hexdigest()
     if sha_mine != sha:
         raise ValueError(f"Checksum of received file '{fname}' ({sha_mine}) does not match expected ({sha})!")
     Path(fname).parent.mkdir(parents=True, exist_ok=True)
-    with open(fname, "w", encoding="utf-8") as f:
-        f.write(contents)
+    with open(fname, "wb") as f:
+        f.write(content)
 
 
 def recv_files(prefix, missing, from_stream, to_stream):
     for id in missing:
         for f in missing[id]["files"]:
-            print(f"SEND {f["name"]}", file=to_stream)
+            to_stream.write(f"SEND {f["name"]}\n".encode("utf-8"))
             to_stream.flush()
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream, f["sha"])
@@ -158,7 +154,7 @@ def recv_files(prefix, missing, from_stream, to_stream):
                         msg.tags.clear()
                         for tag in missing[id]["tags"]:
                             msg.tags.add(tag)
-    print("SEND_END", file=to_stream)
+    to_stream.write(b"SEND_END\n")
     to_stream.flush()
 
 
@@ -171,14 +167,15 @@ def sync_server(args):
     with initial_changes(args) as (dbw, tmp):
         prefix = os.path.join(str(dbw.default_path()), '')
         changes_mine = tmp
-        print(json.dumps(changes_mine))
+        sys.stdout.buffer.write(json.dumps(changes_mine).encode("utf-8"))
+        sys.stdout.buffer.write(b"\n")
         sys.stdout.flush()
-        changes_theirs = json.loads(sys.stdin.readline())
+        changes_theirs = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
         sync_tags(dbw, changes_mine, changes_theirs)
 
     missing = get_missing_files(changes_theirs)
-    send_files(prefix, sys.stdin, sys.stdout)
-    recv_files(prefix, missing, sys.stdin, sys.stdout)
+    send_files(prefix, sys.stdin.buffer, sys.stdout.buffer)
+    recv_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
 
 
 def sync_client(args):
@@ -190,9 +187,7 @@ def sync_client(args):
         cmd,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1
+        stderr=subprocess.PIPE
     )
 
     from_remote = proc.stdout
@@ -208,8 +203,9 @@ def sync_client(args):
         with initial_changes(args) as (dbw, tmp):
             prefix = os.path.join(str(dbw.default_path()), '')
             changes_mine = tmp
-            changes_theirs = json.loads(from_remote.readline())
-            print(json.dumps(changes_mine), file=to_remote)
+            changes_theirs = json.loads(from_remote.readline().decode("utf-8"))
+            to_remote.write(json.dumps(changes_mine).encode("utf-8"))
+            to_remote.write(b"\n")
             to_remote.flush()
             sync_tags(dbw, changes_mine, changes_theirs)
 

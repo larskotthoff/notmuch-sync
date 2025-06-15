@@ -7,8 +7,6 @@ from pathlib import Path
 
 from tempfile import TemporaryDirectory
 
-IN_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS") == "true"
-
 def write_conf(path):
     conf_path = os.path.join(path, ".notmuch-config")
     with open(conf_path, "w", encoding="utf-8") as f:
@@ -33,7 +31,7 @@ def sync(shell, local_conf, remote_conf):
     res = shell.run("./src/notmuch-sync", "--host", "remote",
                     "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync --host local'",
                     env={"NOTMUCH_CONFIG": local_conf})
-    #print(res)
+    print(res)
     assert res.returncode == 0
 
 

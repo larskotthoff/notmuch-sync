@@ -314,7 +314,9 @@ def test_sync_server(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                monkeypatch.setattr(sys, "stdin", io.StringIO('{}\nSEND_END'))
+                mockio = io.BytesIO(b'{}\nSEND_END')
+                mockio.buffer = mockio
+                monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
@@ -347,7 +349,9 @@ def test_sync_server_remote_host(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                monkeypatch.setattr(sys, "stdin", io.StringIO('{}\nSEND_END'))
+                mockio = io.BytesIO(b'{}\nSEND_END')
+                mockio.buffer = mockio
+                monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_server(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
@@ -511,10 +515,10 @@ def test_send_file():
         f1.write("mail one\n")
         f1.write("mail\n")
         f1.close()
-        stream = io.StringIO()
+        stream = io.BytesIO()
         ns.send_file(f1.name, stream)
         out = stream.getvalue()
-        assert "2\nmail one\nmail\n" == out
+        assert b"\x00\x00\x00\x0email one\nmail\n" == out
 
 
 def test_send_files():
@@ -524,48 +528,48 @@ def test_send_files():
             f1.close()
             f2.write("mail two\n")
             f2.close()
-            istream = io.StringIO(f"SEND {f1.name.removeprefix(gettempdir() + os.sep)}\nSEND {f2.name.removeprefix(gettempdir() + os.sep)}\nSEND_END")
-            ostream = io.StringIO()
+            istream = io.BytesIO(f"SEND {f1.name.removeprefix(gettempdir() + os.sep)}\nSEND {f2.name.removeprefix(gettempdir() + os.sep)}\nSEND_END".encode("utf-8"))
+            ostream = io.BytesIO()
             ns.send_files(gettempdir(), istream, ostream)
             out = ostream.getvalue()
-            assert "1\nmail one\n1\nmail two\n" == out
+            assert b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
 
 
 def test_send_files_nothing():
-    istream = io.StringIO(f"SEND_END")
-    ostream = io.StringIO()
+    istream = io.BytesIO(b"SEND_END")
+    ostream = io.BytesIO()
     ns.send_files(gettempdir(), istream, ostream)
     out = ostream.getvalue()
-    assert "" == out
+    assert b"" == out
 
 
 def test_send_files_garbage():
-    istream = io.StringIO(f"LKSHDF")
-    ostream = io.StringIO()
+    istream = io.BytesIO(b"LKSHDF")
+    ostream = io.BytesIO()
     with pytest.raises(ValueError) as pwe:
         ns.send_files(gettempdir(), istream, ostream)
     assert pwe.type == ValueError
     assert str(pwe.value) == "Expected SEND, got 'LKSHDF'!"
     out = ostream.getvalue()
-    assert "" == out
+    assert b"" == out
 
 
 def test_recv_file():
     fname = "foo"
     with patch("builtins.open", mock_open()) as o:
-        stream = io.StringIO("2\nmail one\nmail\n")
+        stream = io.BytesIO(b"\x00\x00\x00\x0email one\nmail\n")
         ns.recv_file("foo", stream, "3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3")
-        o.assert_called_once_with("foo", "w", encoding="utf-8")
+        o.assert_called_once_with("foo", "wb")
         hdl = o()
         hdl.write.assert_called_once()
         args = hdl.write.call_args.args
-        assert "mail one\nmail\n" == args[0]
+        assert b"mail one\nmail\n" == args[0]
 
 
 def test_recv_file_checksum():
     fname = "foo"
     with patch("builtins.open", mock_open()) as o:
-        stream = io.StringIO("2\nmail one\nmail\n")
+        stream = io.BytesIO(b"\x00\x00\x00\x0email one\nmail\n")
         with pytest.raises(ValueError) as pwe:
             ns.recv_file("foo", stream, "abc")
         assert pwe.type == ValueError
@@ -574,17 +578,17 @@ def test_recv_file_checksum():
 
 
 def test_recv_files_nothing():
-    istream = io.StringIO()
-    ostream = io.StringIO()
+    istream = io.BytesIO()
+    ostream = io.BytesIO()
     ns.recv_files(gettempdir(), {}, istream, ostream)
     out = ostream.getvalue()
-    assert "SEND_END\n" == out
+    assert b"SEND_END\n" == out
 
 
 
 def test_recv_files_add():
-    istream = io.StringIO("1\nmail one\n1\nmail two\n")
-    ostream = io.StringIO()
+    istream = io.BytesIO(b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+    ostream = io.BytesIO()
 
     # this is only to get filenames that are guaranteed to be unique
     f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
@@ -608,10 +612,10 @@ def test_recv_files_add():
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
             ns.recv_files(gettempdir(), missing, istream, ostream)
-            assert call(f1.name, "w", encoding="utf-8") in o.mock_calls
-            assert call().write('mail one\n') in o.mock_calls
-            assert call(f2.name, "w", encoding="utf-8") in o.mock_calls
-            assert call().write('mail two\n') in o.mock_calls
+            assert call(f1.name, "wb") in o.mock_calls
+            assert call().write(b'mail one\n') in o.mock_calls
+            assert call(f2.name, "wb") in o.mock_calls
+            assert call().write(b'mail two\n') in o.mock_calls
             hdl = o()
             assert hdl.write.call_count == 2
 
@@ -620,12 +624,12 @@ def test_recv_files_add():
         call(f2.name)
     ]
     out = ostream.getvalue()
-    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out
+    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out.decode("utf-8")
 
 
 def test_recv_files_new():
-    istream = io.StringIO("1\nmail one\n1\nmail two\n")
-    ostream = io.StringIO()
+    istream = io.BytesIO(b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+    ostream = io.BytesIO()
 
     # this is only to get filenames that are guaranteed to be unique
     f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
@@ -663,10 +667,10 @@ def test_recv_files_new():
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
             ns.recv_files(gettempdir(), missing, istream, ostream)
-            assert call(f1.name, "w", encoding="utf-8") in o.mock_calls
-            assert call().write('mail one\n') in o.mock_calls
-            assert call(f2.name, "w", encoding="utf-8") in o.mock_calls
-            assert call().write('mail two\n') in o.mock_calls
+            assert call(f1.name, "wb") in o.mock_calls
+            assert call().write(b'mail one\n') in o.mock_calls
+            assert call(f2.name, "wb") in o.mock_calls
+            assert call().write(b'mail two\n') in o.mock_calls
             hdl = o()
             assert hdl.write.call_count == 2
 
@@ -682,4 +686,4 @@ def test_recv_files_new():
     ]
 
     out = ostream.getvalue()
-    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out
+    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out.decode("utf-8")
