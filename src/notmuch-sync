@@ -113,6 +113,7 @@ def get_missing_files(changes_theirs):
 
 
 def send_file(fname, stream):
+    print(fname, file=sys.stderr)
     with open(fname, "r", encoding="utf-8") as f:
         lines = f.readlines()
         print(len(lines), file=stream)
