@@ -43,8 +43,6 @@ jobs:
     - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
     - run: sudo service ssh start
 
-    #- run: >
-        #echo -e "{\"E1eh87h-0005EH-Hl@nmbug\": {\"tags\": [], \"files\": [{\"name\": \"2018-02/cur/1517465605.H585099P20107.nmbug:2,S\", \"sha\": \"dd43a0882d66918fa7f0bb60bcb6b6b354f1aeeb4cf4c393cf67f77d011b5923\"}]}}\nSEND_END\n83\n`cat /home/runner/notmuch-list/2018-02/cur/1517465605.H585099P20107.nmbug:2,S`" | ssh -i ~/.ssh/test -o StrictHostKeyChecking=no synctest@localhost notmuch-sync --host foo
     - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
 
     - run: notmuch count '*' > /tmp/local.count

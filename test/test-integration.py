@@ -2,6 +2,7 @@ import pytest
 import os
 import socket
 import re
+import shutil
 from pathlib import Path
 
 from tempfile import TemporaryDirectory
@@ -167,10 +168,7 @@ def test_sync_tags_files_none_remote(shell):
     with TemporaryDirectory() as local:
         with TemporaryDirectory() as remote:
             (local_conf, remote_conf) = init(shell, local, remote)
-            Path.unlink(os.path.join(remote, "mails", "attachment.eml"))
-            Path.unlink(os.path.join(remote, "mails", "calendar.eml"))
-            Path.unlink(os.path.join(remote, "mails", "html-only.eml"))
-            Path.unlink(os.path.join(remote, "mails", "simple.eml"))
+            shutil.rmtree(os.path.join(remote, "mails"))
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
