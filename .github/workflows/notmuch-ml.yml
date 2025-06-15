@@ -43,6 +43,7 @@ jobs:
     - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
     - run: sudo service ssh start
 
+    - run: ssh -i ~/.ssh/test -o StrictHostKeyChecking=no synctest@localhost notmuch new
     - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
 
     - run: notmuch count '*' > /tmp/local.count

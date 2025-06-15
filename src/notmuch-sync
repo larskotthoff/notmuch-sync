@@ -145,24 +145,21 @@ def recv_file(fname, stream, sha):
 
 def recv_files(prefix, missing, from_stream, to_stream):
     for id in missing:
-        try:
-            for f in missing[id]["files"]:
-                print(f"SEND {f["name"]}", file=to_stream)
-                to_stream.flush()
-                dst = os.path.join(prefix, f["name"])
-                recv_file(dst, from_stream, f["sha"])
-                with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                    dbw.add(dst)
-            if missing[id]["type"] == "new":
-                with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                    msg = dbw.find(id)
-                    if missing[id]["tags"] != set(msg.tags):
-                        with msg.frozen():
-                            msg.tags.clear()
-                            for tag in missing[id]["tags"]:
-                                msg.tags.add(tag)
-        except ValueError:
-            continue
+        for f in missing[id]["files"]:
+            print(f"SEND {f["name"]}", file=to_stream)
+            to_stream.flush()
+            dst = os.path.join(prefix, f["name"])
+            recv_file(dst, from_stream, f["sha"])
+            with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                dbw.add(dst)
+        if missing[id]["type"] == "new":
+            with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                msg = dbw.find(id)
+                if missing[id]["tags"] != set(msg.tags):
+                    with msg.frozen():
+                        msg.tags.clear()
+                        for tag in missing[id]["tags"]:
+                            msg.tags.add(tag)
     print("SEND_END", file=to_stream)
     to_stream.flush()
 
