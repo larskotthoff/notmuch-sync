@@ -48,7 +48,7 @@ jobs:
     - run: notmuch count '*' > /tmp/local.count
     - run: sudo -u synctest notmuch count '*' > /tmp/remote.count
 
-    - run: if [ `cat /tmp/server.count` -neq `cat /tmp/client.count` ]; then exit 1; fi
+    - run: if [ `cat /tmp/remote.count` -neq `cat /tmp/local.count` ]; then exit 1; fi
     - run: diff -rq ~/notmuch-list /home/synctest/notmuch-list || exit 0
     
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
