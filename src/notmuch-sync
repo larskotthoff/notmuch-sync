@@ -126,7 +126,6 @@ def send_files(prefix, from_stream, to_stream):
     line = from_stream.readline().strip()
     while line != "SEND_END":
         cmd, _, fname = line.partition(' ')
-        print(f"{line}", file=sys.stderr)
         if cmd != "SEND":
             raise ValueError(f"Expected SEND, got '{line}'!")
         send_file(os.path.join(prefix, fname), to_stream)
@@ -208,7 +207,6 @@ def sync_client(args):
         changes_mine = tmp
         changes_theirs = json.loads(from_remote.readline())
         print(json.dumps(changes_mine), file=to_remote)
-        print(json.dumps(changes_mine), file=sys.stderr)
         to_remote.flush()
         sync_tags(dbw, changes_mine, changes_theirs)
 
