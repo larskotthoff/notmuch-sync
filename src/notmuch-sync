@@ -134,6 +134,7 @@ def send_files(prefix, from_stream, to_stream):
 
 def recv_file(fname, stream, sha):
     nlines = int(stream.readline())
+    print(nlines, file=sys.stderr)
     contents = ''.join([ stream.readline() for i in range(0, nlines) ])
     print(contents, file=sys.stderr)
     sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
@@ -198,30 +199,27 @@ def sync_client(args):
     err_remote = proc.stderr
     to_remote = proc.stdin
 
-    changes_mine = []
-    changes_theirs = []
-    prefix = ''
-    # only do tag sync initially to avoid locking db during lengthy file
-    # transfers
-    with initial_changes(args) as (dbw, tmp):
-        prefix = os.path.join(str(dbw.default_path()), '')
-        changes_mine = tmp
-        changes_theirs = json.loads(from_remote.readline())
-        print(json.dumps(changes_mine), file=to_remote)
-        to_remote.flush()
-        sync_tags(dbw, changes_mine, changes_theirs)
+    try:
+        changes_mine = []
+        changes_theirs = []
+        prefix = ''
+        # only do tag sync initially to avoid locking db during lengthy file
+        # transfers
+        with initial_changes(args) as (dbw, tmp):
+            prefix = os.path.join(str(dbw.default_path()), '')
+            changes_mine = tmp
+            changes_theirs = json.loads(from_remote.readline())
+            print(json.dumps(changes_mine), file=to_remote)
+            to_remote.flush()
+            sync_tags(dbw, changes_mine, changes_theirs)
 
-    if select.select([err_remote], [], [], 0)[0]:
-        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
+        missing = get_missing_files(changes_theirs)
+        recv_files(prefix, missing, from_remote, to_remote)
 
-    missing = get_missing_files(changes_theirs)
-    recv_files(prefix, missing, from_remote, to_remote)
-    if select.select([err_remote], [], [], 0)[0]:
-        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
-
-    send_files(prefix, from_remote, to_remote)
-    if select.select([err_remote], [], [], 0)[0]:
-        print(f"Remote error: {err_remote.read()}", file=sys.stderr)
+        send_files(prefix, from_remote, to_remote)
+    finally:
+        if select.select([err_remote], [], [], 0)[0]:
+            print(f"Remote error: {err_remote.read()}", file=sys.stderr)
 
     to_remote.close()
     from_remote.close()
