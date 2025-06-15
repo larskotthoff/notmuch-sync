@@ -395,8 +395,7 @@ def test_sync_files_new():
                "bar": {"tags": ["bar"], "files": [{"name": "foo", "sha": "def"}]}}
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        exp = {"bar": {"type": "new",
-                       "tags": ["bar"],
+        exp = {"bar": {"tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
         assert exp == ns.get_missing_files(changes)
 
@@ -411,7 +410,7 @@ def test_sync_files_moved():
     db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
-    db.add = MagicMock()
+    db.add = MagicMock(return_value=(m, True))
     db.remove = MagicMock()
 
     mock_ctx = MagicMock()
@@ -445,7 +444,7 @@ def test_sync_files_copied():
     db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
-    db.add = MagicMock()
+    db.add = MagicMock(return_value=(m, True))
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -497,8 +496,7 @@ def test_sync_files_added():
                                        "files": [{"name": f1.name.removeprefix(gettempdir() + os.sep),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                                  {"name": "bar", "sha": "abc"}]}}
-                    exp = {"foo": {"type": "add",
-                                   "files": [{"name": "bar", "sha": "abc"}]}}
+                    exp = {"foo": {"files": [{"name": "bar", "sha": "abc"}]}}
                     assert exp == ns.get_missing_files(changes)
                 assert sm.call_count == 0
                 assert sc.call_count == 0
@@ -595,14 +593,13 @@ def test_recv_files_add():
     f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f2.close()
     f2name = f2.name.removeprefix(gettempdir() + os.sep)
-    missing = {"foo": {"type": "add",
-                       "files": [{"name": f1name,
+    missing = {"foo": {"files": [{"name": f1name,
                                   "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
                                  {"name": f2name,
                                   "sha": "0e131e4c8a24e636c44e8f6ae155df8bec777e63a4830b1770e9f9f1e1c26667"}]}}
 
     db = lambda: None
-    db.add = MagicMock()
+    db.add = MagicMock(return_value=(lambda: None, True))
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -637,8 +634,7 @@ def test_recv_files_new():
     f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f2.close()
     f2name = f2.name.removeprefix(gettempdir() + os.sep)
-    missing = {"foo": {"type": "new",
-                       "tags": ["foo", "bar"],
+    missing = {"foo": {"tags": ["foo", "bar"],
                        "files": [{"name": f1name,
                                   "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
                                  {"name": f2name,
@@ -658,7 +654,7 @@ def test_recv_files_new():
 
     db = lambda: None
     db.add = MagicMock()
-    db.find = MagicMock(return_value=m)
+    db.add.side_effect = [(m, False), (m, True)]
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
@@ -678,7 +674,6 @@ def test_recv_files_new():
         call(f1.name),
         call(f2.name)
     ]
-    db.find.assert_called_once_with("foo")
     m.frozen.assert_called_once()
     mt.clear.assert_called_once()
     assert mt.add.mock_calls == [
