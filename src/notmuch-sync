@@ -135,7 +135,12 @@ def send_files(prefix, from_stream, to_stream):
 def recv_file(fname, stream, sha):
     nlines = int(stream.readline())
     print(nlines, file=sys.stderr)
-    contents = ''.join([ stream.readline() for i in range(0, nlines) ])
+    contents = []
+    for i in range(nlines):
+        l = stream.readline()
+        print(i, l, file=sys.stderr)
+        contents.append(l)
+    contents = ''.join(contents)
     print(contents, file=sys.stderr)
     sha_mine = hashlib.new("sha256", contents.encode()).hexdigest()
     if sha_mine != sha:
