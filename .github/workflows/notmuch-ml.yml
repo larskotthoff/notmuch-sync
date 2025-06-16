@@ -54,6 +54,8 @@ jobs:
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
     - run: notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
+    - run: notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none
+    - run: sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: sudo -u synctest bash -c "if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != \"Xquestion\" ]; then exit 1; fi"
 
     - run: time notmuch-sync --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
