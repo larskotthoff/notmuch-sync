@@ -13,6 +13,8 @@ spec = spec_from_loader("notmuch-sync", SourceFileLoader("notmuch-sync", "src/no
 ns = module_from_spec(spec)
 spec.loader.exec_module(ns)
 
+prefix = gettempdir() + os.sep
+
 def test_changes():
     mm = lambda: None
     mm.messageid = "foo"
@@ -23,7 +25,6 @@ def test_changes():
     rev.rev = 124
     rev.uuid = b'abc'
     db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value=gettempdir())
     db.messages = MagicMock(return_value=[mm])
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
@@ -36,15 +37,14 @@ def test_changes():
                 f2.write("mail two")
                 f2.flush()
                 mm.filenames = MagicMock(return_value=[f1.name, f2.name])
-                changes = ns.get_changes(db, f.name)
+                changes = ns.get_changes(db, prefix, f.name)
                 assert changes == {"foo": {"tags": ["foo", "bar"], "files":
-                                           [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                           [{"name": f1.name.removeprefix(prefix),
                                              "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
-                                            {"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                            {"name": f2.name.removeprefix(prefix),
                                              "sha": "17b6d790c2c6dd4c315bba65bd5d877f3a52b26756fadec0fcd6011b5cd38a1a"}]}}
 
     db.revision.assert_called_once()
-    db.default_path.assert_called_once()
     db.messages.assert_called_once_with("lastmod:123..")
 
 
@@ -55,7 +55,6 @@ def test_changes_first_sync():
 
     db = lambda: None
     rev = lambda: None
-    db.default_path = MagicMock(return_value=gettempdir())
     db.messages = MagicMock(return_value=[mm])
 
     # this is only to get a filename that is guaranteed to be unique -- the file
@@ -70,14 +69,13 @@ def test_changes_first_sync():
             f2.write("mail two")
             f2.flush()
             mm.filenames = MagicMock(return_value=[f1.name, f2.name])
-            changes = ns.get_changes(db, f.name)
+            changes = ns.get_changes(db, prefix, f.name)
             assert changes == {"foo": {"tags": ["foo", "bar"], "files":
-                                       [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                       [{"name": f1.name.removeprefix(prefix),
                                          "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
-                                        {"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                        {"name": f2.name.removeprefix(prefix),
                                          "sha": "17b6d790c2c6dd4c315bba65bd5d877f3a52b26756fadec0fcd6011b5cd38a1a"}]}}
 
-    db.default_path.assert_called_once()
     db.messages.assert_called_once_with("lastmod:0..")
 
 
@@ -92,7 +90,7 @@ def test_changes_changed_uuid():
         f.write("123 abc")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, f.name)
+            ns.get_changes(db, prefix, f.name)
         assert pwe.type == SystemExit
         assert pwe.value.code == "Last sync with UUID abc, but notmuch DB has UUID abd, aborting..."
 
@@ -110,7 +108,7 @@ def test_changes_later_rev():
         f.write("123 abc")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, f.name)
+            ns.get_changes(db, prefix, f.name)
         assert pwe.type == SystemExit
         assert pwe.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
 
@@ -128,7 +126,7 @@ def test_changes_corrupted_file():
         f.write("123abc")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, f.name)
+            ns.get_changes(db, prefix, f.name)
         assert pwe.type == SystemExit
         assert pwe.value.code == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
 
@@ -153,14 +151,14 @@ def test_initial_changes():
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                with ns.initial_changes(args) as (db, changes):
+                with ns.initial_changes(args) as (db, prefix, changes):
                     assert [] == changes
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
                 args = hdl.write.call_args.args
                 assert "123 abd" == args[0]
-            gc.assert_called_once_with(db, fname)
+            gc.assert_called_once_with(db, prefix, fname)
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()
@@ -304,13 +302,13 @@ def test_sync_server(monkeypatch):
     rev.rev = 124
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    fname = "/foo/.notmuch/notmuch-sync-host"
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
@@ -323,10 +321,10 @@ def test_sync_server(monkeypatch):
                 hdl.write.assert_called_once()
                 args = hdl.write.call_args.args
                 assert "124 abd" == args[0]
-            gc.assert_called_once_with(db, fname)
+            gc.assert_called_once_with(db, prefix, fname)
 
     assert db.revision.call_count == 2
-    assert db.default_path.call_count == 3
+    db.default_path.assert_called_once()
 
 
 def test_sync_server_remote_host(monkeypatch):
@@ -339,13 +337,13 @@ def test_sync_server_remote_host(monkeypatch):
     rev.rev = 124
     rev.uuid = b'abd'
     db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value='/foo')
+    db.default_path = MagicMock(return_value=gettempdir())
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    fname = "/foo/.notmuch/notmuch-sync-host"
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
@@ -358,31 +356,27 @@ def test_sync_server_remote_host(monkeypatch):
                 hdl.write.assert_called_once()
                 args = hdl.write.call_args.args
                 assert "124 abd" == args[0]
-            gc.assert_called_once_with(db, fname)
+            gc.assert_called_once_with(db, prefix, fname)
 
     assert db.revision.call_count == 2
-    assert db.default_path.call_count == 3
+    db.default_path.assert_called_once()
 
 
 def test_sync_files_empty():
     db = lambda: None
-    db.default_path = MagicMock(return_value='/foo')
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        assert {} == ns.get_missing_files({})
-
-    db.default_path.assert_called_once()
+        assert {} == ns.get_missing_files({}, prefix)
 
 
 def test_sync_files_new():
     m = MagicMock()
-    m.filenames = MagicMock(return_value=['/foo/bar'])
+    m.filenames = MagicMock(return_value=[os.path.join(gettempdir(), "bar")])
     db = lambda: None
-    db.default_path = MagicMock(return_value='/foo')
 
     def effect(*args, **kwargs):
         yield m
@@ -401,9 +395,8 @@ def test_sync_files_new():
     with patch("notmuch2.Database", return_value=mock_ctx):
         exp = {"bar": {"tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
-        assert exp == ns.get_missing_files(changes)
+        assert exp == ns.get_missing_files(changes, prefix)
 
-    db.default_path.assert_called_once()
     m.filenames.assert_called_once()
     assert db.find.mock_calls == [call('foo'), call('bar')]
 
@@ -411,7 +404,6 @@ def test_sync_files_new():
 def test_sync_files_moved():
     m = MagicMock()
     db = lambda: None
-    db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
@@ -429,15 +421,14 @@ def test_sync_files_moved():
                     f1.write("mail one")
                     f1.flush()
                     changes = {"foo": {"tags": ["foo"],
-                                       "files": [{"name": f2.name.removeprefix(gettempdir() + os.sep),
+                                       "files": [{"name": f2.name.removeprefix(prefix),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                    assert {} == ns.get_missing_files(changes)
+                    assert {} == ns.get_missing_files(changes, prefix)
 
                     sm.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
                     db.remove.assert_called_once_with(f1.name)
 
-    db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
     assert m.filenames.call_count == 2
 
@@ -445,7 +436,6 @@ def test_sync_files_moved():
 def test_sync_files_copied():
     m = MagicMock()
     db = lambda: None
-    db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
@@ -464,15 +454,14 @@ def test_sync_files_copied():
                 f1.write("mail one")
                 f1.flush()
                 changes = {"foo": {"tags": ["foo"],
-                                   "files": [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                   "files": [{"name": f1.name.removeprefix(prefix),
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
-                                             {"name": f.name.removeprefix(gettempdir() + os.sep),
+                                             {"name": f.name.removeprefix(prefix),
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                assert {} == ns.get_missing_files(changes)
+                assert {} == ns.get_missing_files(changes, prefix)
 
                 sc.assert_called_once_with(f1.name, f.name)
 
-    db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
     db.add.assert_called_once_with(f.name)
     assert m.filenames.call_count == 2
@@ -481,7 +470,6 @@ def test_sync_files_copied():
 def test_sync_files_added():
     m = MagicMock()
     db = lambda: None
-    db.default_path = MagicMock(return_value=gettempdir())
 
     db.find = MagicMock(return_value=m)
 
@@ -497,15 +485,14 @@ def test_sync_files_added():
                     f1.write("mail one")
                     f1.flush()
                     changes = {"foo": {"tags": ["foo"],
-                                       "files": [{"name": f1.name.removeprefix(gettempdir() + os.sep),
+                                       "files": [{"name": f1.name.removeprefix(prefix),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                                  {"name": "bar", "sha": "abc"}]}}
                     exp = {"foo": {"files": [{"name": "bar", "sha": "abc"}]}}
-                    assert exp == ns.get_missing_files(changes)
+                    assert exp == ns.get_missing_files(changes, prefix)
                 assert sm.call_count == 0
                 assert sc.call_count == 0
 
-    db.default_path.assert_called_once()
     db.find.assert_called_once_with("foo")
     assert m.filenames.call_count == 2
 
@@ -528,9 +515,9 @@ def test_send_files():
             f1.close()
             f2.write("mail two\n")
             f2.close()
-            istream = io.BytesIO(f"SEND {f1.name.removeprefix(gettempdir() + os.sep)}\nSEND {f2.name.removeprefix(gettempdir() + os.sep)}\nSEND_END".encode("utf-8"))
+            istream = io.BytesIO(f"SEND {f1.name.removeprefix(prefix)}\nSEND {f2.name.removeprefix(prefix)}\nSEND_END".encode("utf-8"))
             ostream = io.BytesIO()
-            ns.send_files(gettempdir(), istream, ostream)
+            ns.send_files(prefix, istream, ostream)
             out = ostream.getvalue()
             assert b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
 
@@ -538,7 +525,7 @@ def test_send_files():
 def test_send_files_nothing():
     istream = io.BytesIO(b"SEND_END")
     ostream = io.BytesIO()
-    ns.send_files(gettempdir(), istream, ostream)
+    ns.send_files(prefix, istream, ostream)
     out = ostream.getvalue()
     assert b"" == out
 
@@ -547,7 +534,7 @@ def test_send_files_garbage():
     istream = io.BytesIO(b"LKSHDF")
     ostream = io.BytesIO()
     with pytest.raises(ValueError) as pwe:
-        ns.send_files(gettempdir(), istream, ostream)
+        ns.send_files(prefix, istream, ostream)
     assert pwe.type == ValueError
     assert str(pwe.value) == "Expected SEND, got 'LKSHDF'!"
     out = ostream.getvalue()
@@ -580,7 +567,7 @@ def test_recv_file_checksum():
 def test_recv_files_nothing():
     istream = io.BytesIO()
     ostream = io.BytesIO()
-    ns.recv_files(gettempdir(), {}, istream, ostream)
+    ns.recv_files(prefix, {}, istream, ostream)
     out = ostream.getvalue()
     assert b"SEND_END\n" == out
 
@@ -593,10 +580,10 @@ def test_recv_files_add():
     # this is only to get filenames that are guaranteed to be unique
     f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f1.close()
-    f1name = f1.name.removeprefix(gettempdir() + os.sep)
+    f1name = f1.name.removeprefix(prefix)
     f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f2.close()
-    f2name = f2.name.removeprefix(gettempdir() + os.sep)
+    f2name = f2.name.removeprefix(prefix)
     missing = {"foo": {"files": [{"name": f1name,
                                   "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
                                  {"name": f2name,
@@ -611,7 +598,7 @@ def test_recv_files_add():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.recv_files(gettempdir(), missing, istream, ostream)
+            ns.recv_files(prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -634,10 +621,10 @@ def test_recv_files_new():
     # this is only to get filenames that are guaranteed to be unique
     f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f1.close()
-    f1name = f1.name.removeprefix(gettempdir() + os.sep)
+    f1name = f1.name.removeprefix(prefix)
     f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f2.close()
-    f2name = f2.name.removeprefix(gettempdir() + os.sep)
+    f2name = f2.name.removeprefix(prefix)
     missing = {"foo": {"tags": ["foo", "bar"],
                        "files": [{"name": f1name,
                                   "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
@@ -666,7 +653,7 @@ def test_recv_files_new():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.recv_files(gettempdir(), missing, istream, ostream)
+            ns.recv_files(prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls

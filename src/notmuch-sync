@@ -17,7 +17,7 @@ from contextlib import contextmanager
 
 import notmuch2
 
-def get_changes(db, fname):
+def get_changes(db, prefix, fname):
     """Get changes that happened since the last sync, or everything in the DB if no previous sync."""
     rev_prev = 0
     try:
@@ -37,7 +37,6 @@ def get_changes(db, fname):
         # no previous sync or sync file broken, leave rev_prev at 0 as this will sync entire DB
         pass
 
-    prefix = os.path.join(str(db.default_path()), '')
     return {msg.messageid: {"tags": list(msg.tags), "files": [
         {"name": str(f).removeprefix(prefix),
          "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames()
@@ -47,9 +46,10 @@ def get_changes(db, fname):
 @contextmanager
 def initial_changes(args):
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as db:
-        fname = os.path.join(str(db.default_path()), ".notmuch", f"notmuch-sync-{args.remote or args.host}")
-        changes = get_changes(db, fname)
-        yield (db, changes)
+        prefix = os.path.join(str(db.default_path()), '')
+        fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{args.remote or args.host}")
+        changes = get_changes(db, prefix, fname)
+        yield (db, prefix, changes)
         with open(fname, 'w', encoding="utf-8") as f:
             f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
 
@@ -74,10 +74,9 @@ def sync_tags(db, changes_mine, changes_theirs):
             pass
 
 
-def get_missing_files(changes_theirs):
+def get_missing_files(changes_theirs, prefix):
     ret = {}
     with notmuch2.Database() as db:
-        prefix = os.path.join(str(db.default_path()), '')
         for id in changes_theirs:
             try:
                 msg = db.find(id)
@@ -164,8 +163,8 @@ def sync_server(args):
     prefix = ''
     # only do tag sync initially to avoid locking db during lengthy file
     # transfers
-    with initial_changes(args) as (dbw, tmp):
-        prefix = os.path.join(str(dbw.default_path()), '')
+    with initial_changes(args) as (dbw, prefix_tmp, tmp):
+        prefix = prefix_tmp
         changes_mine = tmp
         sys.stdout.buffer.write(json.dumps(changes_mine).encode("utf-8"))
         sys.stdout.buffer.write(b"\n")
@@ -173,7 +172,7 @@ def sync_server(args):
         changes_theirs = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
         sync_tags(dbw, changes_mine, changes_theirs)
 
-    missing = get_missing_files(changes_theirs)
+    missing = get_missing_files(changes_theirs, prefix)
     send_files(prefix, sys.stdin.buffer, sys.stdout.buffer)
     recv_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
 
@@ -200,8 +199,8 @@ def sync_client(args):
         prefix = ''
         # only do tag sync initially to avoid locking db during lengthy file
         # transfers
-        with initial_changes(args) as (dbw, tmp):
-            prefix = os.path.join(str(dbw.default_path()), '')
+        with initial_changes(args) as (dbw, prefix_tmp, tmp):
+            prefix = prefix_tmp
             changes_mine = tmp
             changes_theirs = json.loads(from_remote.readline().decode("utf-8"))
             to_remote.write(json.dumps(changes_mine).encode("utf-8"))
@@ -209,7 +208,7 @@ def sync_client(args):
             to_remote.flush()
             sync_tags(dbw, changes_mine, changes_theirs)
 
-        missing = get_missing_files(changes_theirs)
+        missing = get_missing_files(changes_theirs, prefix)
         recv_files(prefix, missing, from_remote, to_remote)
         send_files(prefix, from_remote, to_remote)
     finally:
