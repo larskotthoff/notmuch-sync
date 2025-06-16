@@ -97,6 +97,13 @@ def initial_sync(sync_suffix, from_stream, to_stream):
 
         asyncio.run(sync())
         sync_tags(dbw, changes["mine"], changes["theirs"])
+
+        # record last sync here -- this means that later changes (adding files,
+        # adding messages, deleting) will show up during the next sync, but we
+        # check whether there are any actual changes, so they shouldn't result
+        # in a cascading torrent
+        # if we don't record the last sync here, we might miss external changes
+        # during the next stages, as the DB is no longer locked
         with open(fname, 'w', encoding="utf-8") as f:
             f.write(f"{dbw.revision().rev} {dbw.revision().uuid.decode()}")
 
