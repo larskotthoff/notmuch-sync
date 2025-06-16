@@ -149,12 +149,12 @@ def test_initial_sync():
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                istream = io.BytesIO(b"[]\n")
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]")
                 ostream = io.BytesIO()
                 prefix, mine, theirs = ns.initial_sync("foo", istream, ostream)
                 assert mine == []
                 assert theirs == []
-                assert b"[]\n" == ostream.getvalue()
+                assert b"\x00\x00\x00\x02[]" == ostream.getvalue()
 
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
@@ -315,7 +315,7 @@ def test_sync_server(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'{}\nSEND_END')
+                mockio = io.BytesIO(b'\x00\x00\x00\x02{}SEND_END')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_remote(args)
@@ -349,7 +349,7 @@ def test_sync_server_remote_host(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'{}\nSEND_END')
+                mockio = io.BytesIO(b'\x00\x00\x00\x02{}SEND_END')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_remote(args)
