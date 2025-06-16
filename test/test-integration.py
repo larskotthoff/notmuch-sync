@@ -15,14 +15,13 @@ def write_conf(path):
 
 
 def sync(shell, local_conf, remote_conf):
-    res = shell.run("./src/notmuch-sync", "--host", "remote",
-                    "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync --host local'",
+    res = shell.run("./src/notmuch-sync", "--remote", "remote", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync --host local'",
                     env={"NOTMUCH_CONFIG": local_conf})
     #print(res)
     assert res.returncode == 0
 
 
-def test_sync_initial(shell):
+def test_sync(shell):
     with TemporaryDirectory() as local:
         with TemporaryDirectory() as remote:
             assert shell.run("cp", "-r", "test/mails", local).returncode == 0

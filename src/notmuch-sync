@@ -11,6 +11,7 @@ import json
 import shlex
 import shutil
 import hashlib
+import asyncio
 from pathlib import Path
 
 from contextlib import contextmanager
@@ -43,17 +44,6 @@ def get_changes(db, prefix, fname):
         ]} for msg in db.messages(f"lastmod:{rev_prev}..")}
 
 
-@contextmanager
-def initial_changes(args):
-    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as db:
-        prefix = os.path.join(str(db.default_path()), '')
-        fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{args.remote or args.host}")
-        changes = get_changes(db, prefix, fname)
-        yield (db, prefix, changes)
-        with open(fname, 'w', encoding="utf-8") as f:
-            f.write(f"{db.revision().rev} {db.revision().uuid.decode()}")
-
-
 def sync_tags(db, changes_mine, changes_theirs):
     for id in changes_theirs:
         tags = changes_theirs[id]["tags"]
@@ -72,6 +62,35 @@ def sync_tags(db, changes_mine, changes_theirs):
             # we don't have this message on our side, it will be added later
             # when syncing files
             pass
+
+
+def initial_sync(sync_suffix, from_stream, to_stream):
+    # only do tag sync initially to avoid locking db during lengthy file transfers
+    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+        prefix = os.path.join(str(dbw.default_path()), '')
+        fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{sync_suffix}")
+        # using a hash here b/c of Python's scoping rules -- need to set this in
+        # the async function
+        changes = {}
+        changes["mine"] = get_changes(dbw, prefix, fname)
+
+        async def send():
+            to_stream.write(json.dumps(changes["mine"]).encode("utf-8"))
+            to_stream.write(b"\n")
+            to_stream.flush()
+
+        async def recv():
+            changes["theirs"] = json.loads(from_stream.readline().decode("utf-8"))
+
+        async def sync():
+            await asyncio.gather(send(), recv())
+
+        asyncio.run(sync())
+        sync_tags(dbw, changes["mine"], changes["theirs"])
+        with open(fname, 'w', encoding="utf-8") as f:
+            f.write(f"{dbw.revision().rev} {dbw.revision().uuid.decode()}")
+
+    return (prefix, changes["mine"], changes["theirs"])
 
 
 def get_missing_files(changes_theirs, prefix):
@@ -157,27 +176,14 @@ def recv_files(prefix, missing, from_stream, to_stream):
     to_stream.flush()
 
 
-def sync_server(args):
-    changes_mine = []
-    changes_theirs = []
-    prefix = ''
-    # only do tag sync initially to avoid locking db during lengthy file
-    # transfers
-    with initial_changes(args) as (dbw, prefix_tmp, tmp):
-        prefix = prefix_tmp
-        changes_mine = tmp
-        sys.stdout.buffer.write(json.dumps(changes_mine).encode("utf-8"))
-        sys.stdout.buffer.write(b"\n")
-        sys.stdout.flush()
-        changes_theirs = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
-        sync_tags(dbw, changes_mine, changes_theirs)
-
+def sync_remote(args):
+    prefix, changes_mine, changes_theirs = initial_sync(args.host, sys.stdin.buffer, sys.stdout.buffer)
     missing = get_missing_files(changes_theirs, prefix)
     send_files(prefix, sys.stdin.buffer, sys.stdout.buffer)
     recv_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
 
 
-def sync_client(args):
+def sync_local(args):
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
@@ -194,20 +200,7 @@ def sync_client(args):
     to_remote = proc.stdin
 
     try:
-        changes_mine = []
-        changes_theirs = []
-        prefix = ''
-        # only do tag sync initially to avoid locking db during lengthy file
-        # transfers
-        with initial_changes(args) as (dbw, prefix_tmp, tmp):
-            prefix = prefix_tmp
-            changes_mine = tmp
-            changes_theirs = json.loads(from_remote.readline().decode("utf-8"))
-            to_remote.write(json.dumps(changes_mine).encode("utf-8"))
-            to_remote.write(b"\n")
-            to_remote.flush()
-            sync_tags(dbw, changes_mine, changes_theirs)
-
+        prefix, changes_mine, changes_theirs = initial_sync(args.remote, from_remote, to_remote)
         missing = get_missing_files(changes_theirs, prefix)
         recv_files(prefix, missing, from_remote, to_remote)
         send_files(prefix, from_remote, to_remote)
@@ -235,6 +228,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.remote or args.remote_cmd:
-        sync_client(args)
+        sync_local(args)
     else:
-        sync_server(args)
+        sync_remote(args)

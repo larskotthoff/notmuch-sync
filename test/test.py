@@ -133,9 +133,7 @@ def test_changes_corrupted_file():
     db.revision.assert_called_once()
 
 
-def test_initial_changes():
-    args = lambda: None
-    args.remote = "foo"
+def test_initial_sync():
     db = lambda: None
     rev = lambda: None
     rev.rev = 123
@@ -151,8 +149,13 @@ def test_initial_changes():
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                with ns.initial_changes(args) as (db, prefix, changes):
-                    assert [] == changes
+                istream = io.BytesIO(b"[]\n")
+                ostream = io.BytesIO()
+                prefix, mine, theirs = ns.initial_sync("foo", istream, ostream)
+                assert mine == []
+                assert theirs == []
+                assert b"[]\n" == ostream.getvalue()
+
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
@@ -295,41 +298,6 @@ def test_sync_tags_mine_theirs_overlap():
 
 def test_sync_server(monkeypatch):
     args = lambda: None
-    args.remote = "host"
-
-    db = lambda: None
-    rev = lambda: None
-    rev.rev = 124
-    rev.uuid = b'abd'
-    db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value=gettempdir())
-
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch.object(ns, "get_changes", return_value=[]) as gc:
-            with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'{}\nSEND_END')
-                mockio.buffer = mockio
-                monkeypatch.setattr(sys, "stdin", mockio)
-                ns.sync_server(args)
-                o.assert_called_once_with(fname, "w", encoding="utf-8")
-                hdl = o()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert "124 abd" == args[0]
-            gc.assert_called_once_with(db, prefix, fname)
-
-    assert db.revision.call_count == 2
-    db.default_path.assert_called_once()
-
-
-def test_sync_server_remote_host(monkeypatch):
-    args = lambda: None
-    args.remote = None
     args.host = "host"
 
     db = lambda: None
@@ -350,7 +318,41 @@ def test_sync_server_remote_host(monkeypatch):
                 mockio = io.BytesIO(b'{}\nSEND_END')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
-                ns.sync_server(args)
+                ns.sync_remote(args)
+                o.assert_called_once_with(fname, "w", encoding="utf-8")
+                hdl = o()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert "124 abd" == args[0]
+            gc.assert_called_once_with(db, prefix, fname)
+
+    assert db.revision.call_count == 2
+    db.default_path.assert_called_once()
+
+
+def test_sync_server_remote_host(monkeypatch):
+    args = lambda: None
+    args.host = "host"
+
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 124
+    rev.uuid = b'abd'
+    db.revision = MagicMock(return_value=rev)
+    db.default_path = MagicMock(return_value=gettempdir())
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch.object(ns, "get_changes", return_value=[]) as gc:
+            with patch("builtins.open", mock_open()) as o:
+                mockio = io.BytesIO(b'{}\nSEND_END')
+                mockio.buffer = mockio
+                monkeypatch.setattr(sys, "stdin", mockio)
+                ns.sync_remote(args)
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
