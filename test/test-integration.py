@@ -15,9 +15,9 @@ def write_conf(path):
 
 
 def sync(shell, local_conf, remote_conf):
-    res = shell.run("./src/notmuch-sync", "--remote", "remote", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync --host local'",
+    res = shell.run("./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync'",
                     env={"NOTMUCH_CONFIG": local_conf})
-    print(res)
+    #print(res)
     assert res.returncode == 0
 
 
@@ -31,26 +31,28 @@ def test_sync(shell):
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": local_conf}).data == 4
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": remote_conf}).data == 4
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[0] == "4"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[0] == "4"
 
             sync(shell, local_conf, remote_conf)
 
-            local_sync_file = os.path.join(local, ".notmuch", "notmuch-sync-remote")
+            local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {lsum[1]}"
 
-            remote_sync_file = os.path.join(remote, ".notmuch", "notmuch-sync-local")
+            remote_sync_file = os.path.join(remote, ".notmuch", f"notmuch-sync-{lsum[1]}")
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {rsum[1]}"
 
             sync(shell, local_conf, remote_conf)
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {rsum[1]}"
 
 
 def test_sync_tags(shell):
@@ -63,18 +65,20 @@ def test_sync_tags(shell):
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": local_conf}).data == 4
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": remote_conf}).data == 4
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[0] == "4"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[0] == "4"
 
             sync(shell, local_conf, remote_conf)
-            local_sync_file = os.path.join(local, ".notmuch", "notmuch-sync-remote")
+            local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
-            remote_sync_file = os.path.join(remote, ".notmuch", "notmuch-sync-local")
+                assert f.read() == f"4 {lsum[1]}"
+            remote_sync_file = os.path.join(remote, ".notmuch", f"notmuch-sync-{lsum[1]}")
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {rsum[1]}"
 
             assert shell.run("notmuch", "tag", "+local", "id:874llc2bkp.fsf@curie.anarc.at",
                              env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
@@ -110,10 +114,9 @@ def test_sync_tags(shell):
                              env={"NOTMUCH_CONFIG": remote_conf}).data == ["remote", "unread"]
 
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('10 [0-9a-z-]+', f.read())
-
+                assert f.read() == f"10 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('10 [0-9a-z-]+', f.read())
+                assert f.read() == f"10 {rsum[1]}"
 
 
 def test_sync_tags_files(shell):
@@ -130,8 +133,10 @@ def test_sync_tags_files(shell):
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": local_conf}).data == 2
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": remote_conf}).data == 2
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[0] == "2"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[0] == "2"
 
             assert shell.run("notmuch", "tag", "+local", "id:87d1dajhgf.fsf@example.net",
                              env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
@@ -167,15 +172,15 @@ def test_sync_tags_files(shell):
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:87d1dajhgf.fsf@example.net",
                              env={"NOTMUCH_CONFIG": remote_conf}).data == ["local"]
 
-            local_sync_file = os.path.join(local, ".notmuch", "notmuch-sync-remote")
+            local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {lsum[1]}"
 
-            remote_sync_file = os.path.join(remote, ".notmuch", "notmuch-sync-local")
+            remote_sync_file = os.path.join(remote, ".notmuch", f"notmuch-sync-{lsum[1]}")
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('4 [0-9a-z-]+', f.read())
+                assert f.read() == f"4 {rsum[1]}"
 
 
 def test_sync_tags_files_none_remote(shell):
@@ -187,8 +192,10 @@ def test_sync_tags_files_none_remote(shell):
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
             assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": local_conf}).data == 4
-            assert shell.run("notmuch", "count", "*", env={"NOTMUCH_CONFIG": remote_conf}).data == 0
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[0] == "4"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[0] == "0"
 
             assert shell.run("notmuch", "tag", "+local", "id:87d1dajhgf.fsf@example.net",
                              env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
@@ -223,12 +230,12 @@ def test_sync_tags_files_none_remote(shell):
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:87d1dajhgf.fsf@example.net",
                              env={"NOTMUCH_CONFIG": remote_conf}).data == ["local"]
 
-            local_sync_file = os.path.join(local, ".notmuch", "notmuch-sync-remote")
+            local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('8 [0-9a-z-]+', f.read())
+                assert f.read() == f"8 {lsum[1]}"
 
-            remote_sync_file = os.path.join(remote, ".notmuch", "notmuch-sync-local")
+            remote_sync_file = os.path.join(remote, ".notmuch", f"notmuch-sync-{lsum[1]}")
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert re.match('0 [0-9a-z-]+', f.read())
+                assert f.read() == f"0 {rsum[1]}"

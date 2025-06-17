@@ -24,12 +24,11 @@ def test_changes():
     db = lambda: None
     rev = lambda: None
     rev.rev = 124
-    rev.uuid = b'abc'
-    db.revision = MagicMock(return_value=rev)
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
     db.messages = MagicMock(return_value=[mm])
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
-        f.write("123 abc")
+        f.write("123 00000000-0000-0000-0000-000000000000")
         f.flush()
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
             f1.write("mail one")
@@ -38,14 +37,13 @@ def test_changes():
                 f2.write("mail two")
                 f2.flush()
                 mm.filenames = MagicMock(return_value=[f1.name, f2.name])
-                changes = ns.get_changes(db, prefix, f.name)
+                changes = ns.get_changes(db, rev, prefix, f.name)
                 assert changes == {"foo": {"tags": ["foo", "bar"], "files":
                                            [{"name": f1.name.removeprefix(prefix),
                                              "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                             {"name": f2.name.removeprefix(prefix),
                                              "sha": "17b6d790c2c6dd4c315bba65bd5d877f3a52b26756fadec0fcd6011b5cd38a1a"}]}}
 
-    db.revision.assert_called_once()
     db.messages.assert_called_once_with("lastmod:123..")
 
 
@@ -70,7 +68,7 @@ def test_changes_first_sync():
             f2.write("mail two")
             f2.flush()
             mm.filenames = MagicMock(return_value=[f1.name, f2.name])
-            changes = ns.get_changes(db, prefix, f.name)
+            changes = ns.get_changes(db, rev, prefix, f.name)
             assert changes == {"foo": {"tags": ["foo", "bar"], "files":
                                        [{"name": f1.name.removeprefix(prefix),
                                          "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
@@ -84,61 +82,52 @@ def test_changes_changed_uuid():
     db = lambda: None
     rev = lambda: None
     rev.rev = 124
-    rev.uuid = b'abd'
-    db.revision = MagicMock(return_value=rev)
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 abc")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, prefix, f.name)
+            ns.get_changes(db, rev, prefix, f.name)
         assert pwe.type == SystemExit
-        assert pwe.value.code == "Last sync with UUID abc, but notmuch DB has UUID abd, aborting..."
-
-    db.revision.assert_called_once()
+        assert pwe.value.code == "Last sync with UUID abc, but notmuch DB has UUID 00000000-0000-0000-0000-000000000000, aborting..."
 
 
 def test_changes_later_rev():
     db = lambda: None
     rev = lambda: None
     rev.rev = 122
-    rev.uuid = b'abc'
-    db.revision = MagicMock(return_value=rev)
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
-        f.write("123 abc")
+        f.write("123 00000000-0000-0000-0000-000000000000")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, prefix, f.name)
+            ns.get_changes(db, rev, prefix, f.name)
         assert pwe.type == SystemExit
         assert pwe.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
-
-    db.revision.assert_called_once()
 
 
 def test_changes_corrupted_file():
     db = lambda: None
     rev = lambda: None
     rev.rev = 124
-    rev.uuid = b'abd'
-    db.revision = MagicMock(return_value=rev)
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
 
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123abc")
         f.flush()
         with pytest.raises(SystemExit) as pwe:
-            ns.get_changes(db, prefix, f.name)
+            ns.get_changes(db, rev, prefix, f.name)
         assert pwe.type == SystemExit
         assert pwe.value.code == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
-
-    db.revision.assert_called_once()
 
 
 def test_initial_sync():
     db = lambda: None
     rev = lambda: None
     rev.rev = 123
-    rev.uuid = b'abd'
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value=gettempdir())
 
@@ -146,23 +135,23 @@ def test_initial_sync():
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-foo")
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-00000000-0000-0000-0000-000000000001")
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                istream = io.BytesIO(b"\x00\x00\x00\x02[]")
+                istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
                 ostream = io.BytesIO()
-                prefix, mine, theirs = ns.initial_sync("foo", istream, ostream)
+                prefix, mine, theirs = ns.initial_sync(istream, ostream)
                 assert mine == []
                 assert theirs == []
-                assert b"\x00\x00\x00\x02[]" == ostream.getvalue()
+                assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
 
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
                 hdl = o()
                 hdl.write.assert_called_once()
                 args = hdl.write.call_args.args
-                assert "123 abd" == args[0]
-            gc.assert_called_once_with(db, prefix, fname)
+                assert "123 00000000-0000-0000-0000-000000000000" == args[0]
+            gc.assert_called_once_with(db, rev, prefix, fname)
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()
@@ -299,12 +288,11 @@ def test_sync_tags_mine_theirs_overlap():
 
 def test_sync_server(monkeypatch):
     args = lambda: None
-    args.host = "host"
 
     db = lambda: None
     rev = lambda: None
     rev.rev = 124
-    rev.uuid = b'abd'
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
     db.revision = MagicMock(return_value=rev)
     db.default_path = MagicMock(return_value=gettempdir())
 
@@ -312,11 +300,11 @@ def test_sync_server(monkeypatch):
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
-    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-00000000-0000-0000-0000-000000000001")
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'\x00\x00\x00\x02{}\x00\x00\x00\x00')
+                mockio = io.BytesIO(b'00000000-0000-0000-0000-000000000001\x00\x00\x00\x02{}\x00\x00\x00\x00')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_remote(args)
@@ -324,42 +312,8 @@ def test_sync_server(monkeypatch):
                 hdl = o()
                 hdl.write.assert_called_once()
                 args = hdl.write.call_args.args
-                assert "124 abd" == args[0]
-            gc.assert_called_once_with(db, prefix, fname)
-
-    assert db.revision.call_count == 2
-    db.default_path.assert_called_once()
-
-
-def test_sync_server_remote_host(monkeypatch):
-    args = lambda: None
-    args.host = "host"
-
-    db = lambda: None
-    rev = lambda: None
-    rev.rev = 124
-    rev.uuid = b'abd'
-    db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value=gettempdir())
-
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-host")
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch.object(ns, "get_changes", return_value=[]) as gc:
-            with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'\x00\x00\x00\x02{}\x00\x00\x00\x00')
-                mockio.buffer = mockio
-                monkeypatch.setattr(sys, "stdin", mockio)
-                ns.sync_remote(args)
-                o.assert_called_once_with(fname, "w", encoding="utf-8")
-                hdl = o()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert "124 abd" == args[0]
-            gc.assert_called_once_with(db, prefix, fname)
+                assert "124 00000000-0000-0000-0000-000000000000" == args[0]
+            gc.assert_called_once_with(db, rev, prefix, fname)
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()

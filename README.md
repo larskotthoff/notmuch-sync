@@ -4,6 +4,7 @@
 
 The communication protocol is binary. This is what the script produces on stdout and expects on stdin.
 
+- 36 bytes UUID of notmuch database
 - 4 bytes unsigned int length of JSON-encoded changes
 - JSON-encoded changes
 - 4 bytes unsigned int number of files requested
