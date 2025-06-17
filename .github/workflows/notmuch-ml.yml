@@ -18,7 +18,7 @@ jobs:
     - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 wget ssh
 
     - run: echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
-    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz notmuch-list/2018-02
+    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
     - run: notmuch new
     - run: notmuch tag -unread date:..1M
     - run: notmuch tag +patch subject:patch or attachment:.patch
