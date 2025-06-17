@@ -14,8 +14,6 @@ import hashlib
 import asyncio
 from pathlib import Path
 
-from contextlib import contextmanager
-
 import notmuch2
 
 def write(data, stream):
@@ -143,22 +141,12 @@ def get_missing_files(changes_theirs, prefix):
             except LookupError:
                 # don't have this message; all files missing
                 ret[id] = changes_theirs[id]
-
     return ret
 
 
 def send_file(fname, stream):
     with open(fname, "rb") as f:
-        content = f.read()
-        write(content, stream)
-
-
-def send_files(prefix, from_stream, to_stream):
-    while (line := from_stream.readline().decode("utf-8").strip()) != "SEND_END":
-        cmd, _, fname = line.partition(' ')
-        if cmd != "SEND":
-            raise ValueError(f"Expected SEND, got '{line}'!")
-        send_file(os.path.join(prefix, fname), to_stream)
+        write(f.read(), stream)
 
 
 def recv_file(fname, stream, sha):
@@ -171,11 +159,32 @@ def recv_file(fname, stream, sha):
         f.write(content)
 
 
-def recv_files(prefix, missing, from_stream, to_stream):
-    for id in missing:
-        for f in missing[id]["files"]:
-            to_stream.write(f"SEND {f["name"]}\n".encode("utf-8"))
-            to_stream.flush()
+def sync_files(prefix, missing, from_stream, to_stream):
+    files = {}
+    files["mine"] = [ f | {"id": id} for id in missing for f in missing[id]["files"] ]
+
+    async def send_fnames():
+        to_stream.write(struct.pack("!I", len(files["mine"])))
+        to_stream.flush()
+        for f in files["mine"]:
+            write(f["name"].encode("utf-8"), to_stream)
+
+    async def recv_fnames():
+        size_data = from_stream.read(4)
+        nfiles = struct.unpack("!I", size_data)[0]
+        files["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
+
+    async def sync_fnames():
+        await asyncio.gather(send_fnames(), recv_fnames())
+
+    asyncio.run(sync_fnames())
+
+    async def send_files():
+        for fname in files["theirs"]:
+            send_file(os.path.join(prefix, fname), to_stream)
+    
+    async def recv_files():
+        for f in files["mine"]:
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream, f["sha"])
             with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
@@ -183,17 +192,19 @@ def recv_files(prefix, missing, from_stream, to_stream):
                 if not dup:
                     with msg.frozen():
                         msg.tags.clear()
-                        for tag in missing[id]["tags"]:
+                        for tag in missing[f["id"]]["tags"]:
                             msg.tags.add(tag)
-    to_stream.write(b"SEND_END\n")
-    to_stream.flush()
+
+    async def sync():
+        await asyncio.gather(send_files(), recv_files())
+
+    asyncio.run(sync())
 
 
 def sync_remote(args):
     prefix, changes_mine, changes_theirs = initial_sync(args.host, sys.stdin.buffer, sys.stdout.buffer)
     missing = get_missing_files(changes_theirs, prefix)
-    send_files(prefix, sys.stdin.buffer, sys.stdout.buffer)
-    recv_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
+    sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
 
 
 def sync_local(args):
@@ -215,8 +226,7 @@ def sync_local(args):
     try:
         prefix, changes_mine, changes_theirs = initial_sync(args.remote, from_remote, to_remote)
         missing = get_missing_files(changes_theirs, prefix)
-        recv_files(prefix, missing, from_remote, to_remote)
-        send_files(prefix, from_remote, to_remote)
+        sync_files(prefix, missing, from_remote, to_remote)
     finally:
         if select.select([err_remote], [], [], 0)[0]:
             print(f"Remote error: {err_remote.read()}", file=sys.stderr)

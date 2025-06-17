@@ -2,6 +2,7 @@ import pytest
 import os
 import sys
 import io
+import struct
 from unittest.mock import MagicMock, PropertyMock, call, mock_open, patch
 from tempfile import NamedTemporaryFile, gettempdir
 
@@ -315,7 +316,7 @@ def test_sync_server(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'\x00\x00\x00\x02{}SEND_END')
+                mockio = io.BytesIO(b'\x00\x00\x00\x02{}\x00\x00\x00\x00')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_remote(args)
@@ -349,7 +350,7 @@ def test_sync_server_remote_host(monkeypatch):
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
             with patch("builtins.open", mock_open()) as o:
-                mockio = io.BytesIO(b'\x00\x00\x00\x02{}SEND_END')
+                mockio = io.BytesIO(b'\x00\x00\x00\x02{}\x00\x00\x00\x00')
                 mockio.buffer = mockio
                 monkeypatch.setattr(sys, "stdin", mockio)
                 ns.sync_remote(args)
@@ -364,7 +365,7 @@ def test_sync_server_remote_host(monkeypatch):
     db.default_path.assert_called_once()
 
 
-def test_sync_files_empty():
+def test_missing_files_empty():
     db = lambda: None
 
     mock_ctx = MagicMock()
@@ -375,7 +376,7 @@ def test_sync_files_empty():
         assert {} == ns.get_missing_files({}, prefix)
 
 
-def test_sync_files_new():
+def test_missing_files_new():
     m = MagicMock()
     m.filenames = MagicMock(return_value=[os.path.join(gettempdir(), "bar")])
     db = lambda: None
@@ -403,7 +404,7 @@ def test_sync_files_new():
     assert db.find.mock_calls == [call('foo'), call('bar')]
 
 
-def test_sync_files_moved():
+def test_missing_files_moved():
     m = MagicMock()
     db = lambda: None
 
@@ -435,7 +436,7 @@ def test_sync_files_moved():
     assert m.filenames.call_count == 2
 
 
-def test_sync_files_copied():
+def test_missing_files_copied():
     m = MagicMock()
     db = lambda: None
 
@@ -469,7 +470,7 @@ def test_sync_files_copied():
     assert m.filenames.call_count == 2
 
 
-def test_sync_files_added():
+def test_missing_files_added():
     m = MagicMock()
     db = lambda: None
 
@@ -510,38 +511,6 @@ def test_send_file():
         assert b"\x00\x00\x00\x0email one\nmail\n" == out
 
 
-def test_send_files():
-    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-", delete_on_close=False) as f1:
-        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-", delete_on_close=False) as f2:
-            f1.write("mail one\n")
-            f1.close()
-            f2.write("mail two\n")
-            f2.close()
-            istream = io.BytesIO(f"SEND {f1.name.removeprefix(prefix)}\nSEND {f2.name.removeprefix(prefix)}\nSEND_END".encode("utf-8"))
-            ostream = io.BytesIO()
-            ns.send_files(prefix, istream, ostream)
-            out = ostream.getvalue()
-            assert b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
-
-
-def test_send_files_nothing():
-    istream = io.BytesIO(b"SEND_END")
-    ostream = io.BytesIO()
-    ns.send_files(prefix, istream, ostream)
-    out = ostream.getvalue()
-    assert b"" == out
-
-
-def test_send_files_garbage():
-    istream = io.BytesIO(b"LKSHDF")
-    ostream = io.BytesIO()
-    with pytest.raises(ValueError) as pwe:
-        ns.send_files(prefix, istream, ostream)
-    assert pwe.type == ValueError
-    assert str(pwe.value) == "Expected SEND, got 'LKSHDF'!"
-    out = ostream.getvalue()
-    assert b"" == out
-
 
 def test_recv_file():
     fname = "foo"
@@ -566,17 +535,17 @@ def test_recv_file_checksum():
         assert o.call_count == 0
 
 
-def test_recv_files_nothing():
-    istream = io.BytesIO()
+def test_sync_files_nothing():
+    istream = io.BytesIO(b"\x00\x00\x00\x00")
     ostream = io.BytesIO()
-    ns.recv_files(prefix, {}, istream, ostream)
+    ns.sync_files(prefix, {}, istream, ostream)
     out = ostream.getvalue()
-    assert b"SEND_END\n" == out
+    assert b"\x00\x00\x00\x00" == out
 
 
 
-def test_recv_files_add():
-    istream = io.BytesIO(b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+def test_sync_files_recv_add():
+    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
     ostream = io.BytesIO()
 
     # this is only to get filenames that are guaranteed to be unique
@@ -600,7 +569,7 @@ def test_recv_files_add():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.recv_files(prefix, missing, istream, ostream)
+            ns.sync_files(prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -613,11 +582,11 @@ def test_recv_files_add():
         call(f2.name)
     ]
     out = ostream.getvalue()
-    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out.decode("utf-8")
+    assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") == out
 
 
-def test_recv_files_new():
-    istream = io.BytesIO(b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+def test_sync_files_recv_new():
+    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
     ostream = io.BytesIO()
 
     # this is only to get filenames that are guaranteed to be unique
@@ -655,7 +624,7 @@ def test_recv_files_new():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.recv_files(prefix, missing, istream, ostream)
+            ns.sync_files(prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -675,4 +644,68 @@ def test_recv_files_new():
     ]
 
     out = ostream.getvalue()
-    assert f"SEND {f1name}\nSEND {f2name}\nSEND_END\n" == out.decode("utf-8")
+    assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") == out
+
+
+def test_sync_files_send():
+    missing = {}
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = lambda: None
+    mock_ctx.__exit__.return_value = False
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            f1.write("mail one\n")
+            f1.flush()
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                f2.write("mail two\n")
+                f2.flush()
+                istream = io.BytesIO(b"\x00\x00\x00\x02" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + struct.pack("!I", len(f2.name)) + f2.name.encode("utf-8"))
+                ostream = io.BytesIO()
+                ns.sync_files(prefix, missing, istream, ostream)
+                out = ostream.getvalue()
+                assert b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
+
+
+def test_sync_files_send_recv_add():
+    # this is only to get filenames that are guaranteed to be unique
+    f1 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f1.close()
+    f1name = f1.name.removeprefix(prefix)
+    f2 = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
+    f2.close()
+    f2name = f2.name.removeprefix(prefix)
+    missing = {"foo": {"files": [{"name": f1name,
+                                  "sha": "2db89bdd696cbf030ed6b4908ebe0fb59a06d9c038c122ae75467e812be8102c"},
+                                 {"name": f2name,
+                                  "sha": "0e131e4c8a24e636c44e8f6ae155df8bec777e63a4830b1770e9f9f1e1c26667"}]}}
+
+    db = lambda: None
+    db.add = MagicMock(return_value=(lambda: None, True))
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("builtins.open", mock_open(read_data=b"mail three\n")) as o:
+        with patch("notmuch2.Database", return_value=mock_ctx):
+            istream = io.BytesIO(b"\x00\x00\x00\x01" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+            ostream = io.BytesIO()
+            ns.sync_files(prefix, missing, istream, ostream)
+            assert call(f1.name, "wb") in o.mock_calls
+            assert call().write(b'mail one\n') in o.mock_calls
+            assert call(f2.name, "wb") in o.mock_calls
+            assert call().write(b'mail two\n') in o.mock_calls
+            assert call(f1.name, "rb") in o.mock_calls
+            assert call().write(b'mail one\n') in o.mock_calls
+            hdl = o()
+            assert hdl.write.call_count == 2
+            assert hdl.read.call_count == 1
+
+    assert db.add.mock_calls == [
+        call(f1.name),
+        call(f2.name)
+    ]
+    out = ostream.getvalue()
+    res = b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(f2name)) + f2name.encode("utf-8")
+    res += b"\x00\x00\x00\x0bmail three\n"
+    assert res == out
