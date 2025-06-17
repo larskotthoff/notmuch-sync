@@ -54,6 +54,11 @@ def test_sync(shell):
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"4 {rsum[1]}"
 
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[2] == "4\n"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[2] == "4\n"
+
 
 def test_sync_tags(shell):
     with TemporaryDirectory() as local:
@@ -118,6 +123,11 @@ def test_sync_tags(shell):
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"10 {rsum[1]}"
 
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[2] == "10\n"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[2] == "10\n"
+
 
 def test_sync_tags_files(shell):
     with TemporaryDirectory() as local:
@@ -172,6 +182,8 @@ def test_sync_tags_files(shell):
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:87d1dajhgf.fsf@example.net",
                              env={"NOTMUCH_CONFIG": remote_conf}).data == ["local"]
 
+            print(shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}))
+            print(shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}))
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
@@ -181,6 +193,13 @@ def test_sync_tags_files(shell):
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"4 {rsum[1]}"
+
+            # we record the last sync before transferring files and
+            # adding/tagging them, so the revision after finished sync is higher
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[2] == "8\n"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[2] == "8\n"
 
 
 def test_sync_tags_files_none_remote(shell):
@@ -239,3 +258,10 @@ def test_sync_tags_files_none_remote(shell):
             assert os.path.exists(remote_sync_file)
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"0 {rsum[1]}"
+
+            # we record the last sync before transferring files and
+            # adding/tagging them, so the revision after finished sync is higher
+            lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[2] == "8\n"
+            rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[2] == "8\n"
