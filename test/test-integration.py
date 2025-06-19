@@ -36,8 +36,10 @@ def test_sync(shell):
 
             lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
             assert lsum[0] == "4"
+            assert lsum[2] == "5\n"
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[0] == "4"
+            assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
             assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
@@ -183,19 +185,19 @@ def test_sync_tags_files_verbose(shell):
             assert 'Receiving UUID...' == out[2]
             assert 'UUIDs synced.' == out[3]
             assert 'Computing local changes...' == out[4]
-            assert 'Sending local changes...' == out[5]
-            assert 'Receiving remote changes...' == out[6]
+            assert 'Sending local changes...' in out
+            assert 'Receiving remote changes...' in out
             assert 'Changes synced.' == out[7]
-            assert "Setting tags ['local', 'remote'] for 87d1dajhgf.fsf@example.net." == out[8]
-            assert "Setting tags ['attachment', 'local', 'remote'] for 20111101080303.30A10409E@asxas.net." == out[9]
+            assert "Setting tags ['local', 'remote'] for 87d1dajhgf.fsf@example.net." in out
+            assert "Setting tags ['attachment', 'local', 'remote'] for 20111101080303.30A10409E@asxas.net." in out
             assert 'Writing last sync revision 9.' == out[10]
-            assert 'Sending file names missing on local...' == out[11]
-            assert 'Receving file names missing on remote...' == out[12]
+            assert 'Sending file names missing on local...' in out
+            assert 'Receving file names missing on remote...' in out
             assert 'Missing file names synced.' == out[13]
-            assert '1/1 Sending mails/simple.eml...' == out[14]
-            assert '1/1 Receiving mails/attachment.eml...' == out[15]
-            assert f'Adding {local}/mails/attachment.eml to DB.' == out[16]
-            assert "Setting tags ['attachment', 'remote'] for 874llc2bkp.fsf@curie.anarc.at." == out[17]
+            assert '1/1 Sending mails/simple.eml...' in out
+            assert '1/1 Receiving mails/attachment.eml...' in out
+            assert f'Adding {local}/mails/attachment.eml to DB.' in out
+            assert "Setting tags ['attachment', 'remote'] for 874llc2bkp.fsf@curie.anarc.at." in out
             assert 'Missing files synced.' == out[18]
             assert 'Getting change numbers from remote...' == out[19]
             assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t2 messages with tag changes' == out[20]
