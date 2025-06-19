@@ -30,7 +30,7 @@ def read(stream):
 
 def get_changes(db, revision, prefix, fname):
     """Get changes that happened since the last sync, or everything in the DB if no previous sync."""
-    rev_prev = 0
+    rev_prev = -1
     try:
         with open(fname, 'r', encoding="utf-8") as f:
             tmp = f.read().strip('\n\r').split(' ')
@@ -50,7 +50,7 @@ def get_changes(db, revision, prefix, fname):
     return {msg.messageid: {"tags": list(msg.tags), "files": [
         {"name": str(f).removeprefix(prefix),
          "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames()
-        ]} for msg in db.messages(f"lastmod:{rev_prev}..")}
+        ]} for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
 def sync_tags(db, changes_mine, changes_theirs):
@@ -128,7 +128,7 @@ def initial_sync(from_stream, to_stream):
     return (prefix, changes["mine"], changes["theirs"], tchanges)
 
 
-def get_missing_files(changes_theirs, prefix):
+def get_missing_files(changes_mine, changes_theirs, prefix):
     ret = {}
     changes = 0
     with notmuch2.Database() as db:
@@ -144,20 +144,26 @@ def get_missing_files(changes_theirs, prefix):
                                     for f in msg.filenames()]
                     for f in changes_theirs[id]["files"]:
                         if f["name"] in missing_mine:
+                            # check if it has been moved/copied
                             matches = [ x for x in hashes_mine if f["sha"] == x["sha"] ]
                             if len(matches) > 0:
                                 changes += 1
                                 src = os.path.join(prefix, matches[0]["name"])
                                 dst = os.path.join(prefix, f["name"])
-                                if matches[0] in changes_theirs[id]["files"]:
+                                # if there's a local change for this ID, copy
+                                # this is to prevent inconsistencies when
+                                # changes happen on both sides
+                                if matches[0] in changes_theirs[id]["files"] or id in changes_mine:
                                     shutil.copy(src, dst)
                                 else:
                                     shutil.move(src, dst)
                                 with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
                                     dbw.add(dst)
-                                    if matches[0] not in changes_theirs[id]["files"]:
+                                    # see above comment for local changes check
+                                    if matches[0] not in changes_theirs[id]["files"] and id not in changes_mine:
                                         dbw.remove(src)
                                 missing_mine.remove(f["name"])
+                # check which ones are still missing
                 if len(missing_mine) > 0:
                     ret[id] = {"files": [f for f in changes_theirs[id]["files"] if f["name"] in missing_mine]}
             except LookupError:
@@ -229,7 +235,7 @@ def sync_files(prefix, missing, from_stream, to_stream):
 
 def sync_remote(args):
     prefix, changes_mine, changes_theirs, tchanges = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
-    missing, fchanges = get_missing_files(changes_theirs, prefix)
+    missing, fchanges = get_missing_files(changes_mine, changes_theirs, prefix)
     rchanges = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIII", tchanges, fchanges,
                                         rchanges["messages"],
@@ -255,7 +261,7 @@ def sync_local(args):
 
     try:
         prefix, changes_mine, changes_theirs, tchanges = initial_sync(from_remote, to_remote)
-        missing, fchanges = get_missing_files(changes_theirs, prefix)
+        missing, fchanges = get_missing_files(changes_mine, changes_theirs, prefix)
         rchanges = sync_files(prefix, missing, from_remote, to_remote)
 
         remote_changes = struct.unpack("!IIII", from_remote.read(4 * 4))
