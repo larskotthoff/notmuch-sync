@@ -14,9 +14,11 @@ def write_conf(path):
     return conf_path
 
 
-def sync(shell, local_conf, remote_conf):
-    res = shell.run("./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync'",
-                    env={"NOTMUCH_CONFIG": local_conf})
+def sync(shell, local_conf, remote_conf, verbose=False):
+    args = ["./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync'"]
+    if verbose:
+        args.append("--verbose")
+    res = shell.run(*args, env={"NOTMUCH_CONFIG": local_conf})
     #print(res)
     assert res.returncode == 0
     return res.stdout
@@ -147,6 +149,57 @@ def test_sync_tags(shell):
             out = sync(shell, local_conf, remote_conf).split('\n')
             assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
             assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
+
+
+def test_sync_tags_files_verbose(shell):
+    with TemporaryDirectory() as local:
+        with TemporaryDirectory() as remote:
+            assert shell.run("cp", "-r", "test/mails", local).returncode == 0
+            Path.unlink(os.path.join(local, "mails", "attachment.eml"))
+            assert shell.run("cp", "-r", "test/mails", remote).returncode == 0
+            Path.unlink(os.path.join(remote, "mails", "simple.eml"))
+            local_conf = write_conf(local)
+            remote_conf = write_conf(remote)
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+
+            assert shell.run("notmuch", "tag", "+local", "id:87d1dajhgf.fsf@example.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+local", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+local", "id:20111101080303.30A10409E@asxas.net",
+                             env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+
+            assert shell.run("notmuch", "tag", "+remote", "id:20111101080303.30A10409E@asxas.net",
+                             env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+remote", "id:874llc2bkp.fsf@curie.anarc.at",
+                             env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+            assert shell.run("notmuch", "tag", "+remote", "id:87d1dajhgf.fsf@example.net",
+                             env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+
+            out = sync(shell, local_conf, remote_conf, verbose=True).split('\n')
+            assert 'Connecting to remote...' == out[0]
+            assert 'Sending UUID...' == out[1]
+            assert 'Receiving UUID...' == out[2]
+            assert 'UUIDs synced.' == out[3]
+            assert 'Computing local changes...' == out[4]
+            assert 'Sending local changes...' == out[5]
+            assert 'Receiving remote changes...' == out[6]
+            assert 'Changes synced.' == out[7]
+            assert "Setting tags ['local', 'remote'] for 87d1dajhgf.fsf@example.net." == out[8]
+            assert "Setting tags ['attachment', 'local', 'remote'] for 20111101080303.30A10409E@asxas.net." == out[9]
+            assert 'Writing last sync revision 9.' == out[10]
+            assert 'Sending file names missing on local...' == out[11]
+            assert 'Receving file names missing on remote...' == out[12]
+            assert 'Missing file names synced.' == out[13]
+            assert '1/1 Sending mails/simple.eml...' == out[14]
+            assert '1/1 Receiving mails/attachment.eml...' == out[15]
+            assert f'Adding {local}/mails/attachment.eml to DB.' == out[16]
+            assert "Setting tags ['attachment', 'remote'] for 874llc2bkp.fsf@curie.anarc.at." == out[17]
+            assert 'Missing files synced.' == out[18]
+            assert 'Getting change numbers from remote...' == out[19]
+            assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t2 messages with tag changes' == out[20]
+            assert 'remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t2 messages with tag changes' == out[21]
 
 
 def test_sync_tags_files(shell):

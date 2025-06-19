@@ -53,7 +53,7 @@ def get_changes(db, revision, prefix, fname):
         ]} for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
-def sync_tags(db, changes_mine, changes_theirs):
+def sync_tags(args, db, changes_mine, changes_theirs):
     changes = 0
     for id in changes_theirs:
         tags = changes_theirs[id]["tags"]
@@ -63,6 +63,7 @@ def sync_tags(db, changes_mine, changes_theirs):
         try:
             msg = db.find(id)
             if tags != set(msg.tags):
+                args.verbose > 0 and print(f"Setting tags {sorted(list(tags))} for {id}.")
                 with msg.frozen():
                     changes += 1
                     msg.tags.clear()
@@ -77,7 +78,7 @@ def sync_tags(db, changes_mine, changes_theirs):
     return changes
 
 
-def initial_sync(from_stream, to_stream):
+def initial_sync(args, from_stream, to_stream):
     # only do tag sync initially to avoid locking db during lengthy file transfers
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
         prefix = os.path.join(str(dbw.default_path()), '')
@@ -88,32 +89,39 @@ def initial_sync(from_stream, to_stream):
         uuids["mine"] = revision.uuid.decode()
 
         async def send_uuid():
+            args.verbose > 0 and print("Sending UUID...")
             to_stream.write(uuids["mine"].encode("utf-8"))
             to_stream.flush()
 
         async def recv_uuid():
+            args.verbose > 0 and print("Receiving UUID...")
             uuids["theirs"] = from_stream.read(36).decode("utf-8")
 
         async def sync_uuids():
             await asyncio.gather(send_uuid(), recv_uuid())
 
         asyncio.run(sync_uuids())
+        args.verbose > 0 and print("UUIDs synced.")
         fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{uuids["theirs"]}")
 
         changes = {}
+        args.verbose > 0 and print("Computing local changes...")
         changes["mine"] = get_changes(dbw, revision, prefix, fname)
 
         async def send():
+            args.verbose > 0 and print("Sending local changes...")
             write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
         async def recv():
+            args.verbose > 0 and print("Receiving remote changes...")
             changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
         async def sync():
             await asyncio.gather(send(), recv())
 
         asyncio.run(sync())
-        tchanges = sync_tags(dbw, changes["mine"], changes["theirs"])
+        args.verbose > 0 and print("Changes synced.")
+        tchanges = sync_tags(args, dbw, changes["mine"], changes["theirs"])
 
         # record last sync here -- this means that later changes (adding files,
         # adding messages, deleting) will show up during the next sync, but we
@@ -123,12 +131,13 @@ def initial_sync(from_stream, to_stream):
         # during the next stages, as the DB is no longer locked
         with open(fname, 'w', encoding="utf-8") as f:
             revision = dbw.revision()
+            args.verbose > 0 and print(f"Writing last sync revision {revision.rev}.")
             f.write(f"{revision.rev} {revision.uuid.decode()}")
 
     return (prefix, changes["mine"], changes["theirs"], tchanges)
 
 
-def get_missing_files(changes_mine, changes_theirs, prefix):
+def get_missing_files(args, changes_mine, changes_theirs, prefix):
     ret = {}
     changes = 0
     with notmuch2.Database() as db:
@@ -154,13 +163,16 @@ def get_missing_files(changes_mine, changes_theirs, prefix):
                                 # this is to prevent inconsistencies when
                                 # changes happen on both sides
                                 if matches[0] in changes_theirs[id]["files"] or id in changes_mine:
+                                    args.verbose > 0 and print(f"Copying {src} to {dst}.")
                                     shutil.copy(src, dst)
                                 else:
+                                    args.verbose > 0 and print(f"Moving {src} to {dst}.")
                                     shutil.move(src, dst)
                                 with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
                                     dbw.add(dst)
                                     # see above comment for local changes check
                                     if matches[0] not in changes_theirs[id]["files"] and id not in changes_mine:
+                                        args.verbose > 0 and print(f"Removing {src} from DB.")
                                         dbw.remove(src)
                                 missing_mine.remove(f["name"])
                 # check which ones are still missing
@@ -187,18 +199,20 @@ def recv_file(fname, stream, sha):
         f.write(content)
 
 
-def sync_files(prefix, missing, from_stream, to_stream):
+def sync_files(args, prefix, missing, from_stream, to_stream):
     files = {}
     files["mine"] = [ f | {"id": id} for id in missing for f in missing[id]["files"] ]
     changes = {"files": len(files["mine"]), "messages": 0}
 
     async def send_fnames():
+        args.verbose > 0 and print("Sending file names missing on local...")
         to_stream.write(struct.pack("!I", len(files["mine"])))
         to_stream.flush()
         for f in files["mine"]:
             write(f["name"].encode("utf-8"), to_stream)
 
     async def recv_fnames():
+        args.verbose > 0 and print("Receving file names missing on remote...")
         size_data = from_stream.read(4)
         nfiles = struct.unpack("!I", size_data)[0]
         files["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
@@ -207,20 +221,25 @@ def sync_files(prefix, missing, from_stream, to_stream):
         await asyncio.gather(send_fnames(), recv_fnames())
 
     asyncio.run(sync_fnames())
+    args.verbose > 0 and print("Missing file names synced.")
 
     async def send_files():
-        for fname in files["theirs"]:
+        for idx, fname in enumerate(files["theirs"]):
+            args.verbose > 0 and print(f"{idx + 1}/{len(files["theirs"])} Sending {fname}...")
             send_file(os.path.join(prefix, fname), to_stream)
     
     async def recv_files():
-        for f in files["mine"]:
+        for idx, f in enumerate(files["mine"]):
+            args.verbose > 0 and print(f"{idx + 1}/{len(files["mine"])} Receiving {f["name"]}...")
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream, f["sha"])
             with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                args.verbose > 0 and print(f"Adding {dst} to DB.")
                 msg, dup = dbw.add(dst)
                 if not dup:
                     changes["messages"] += 1
                     with msg.frozen():
+                        args.verbose > 0 and print(f"Setting tags {sorted(missing[f["id"]]["tags"])} for {msg.messageid}.")
                         msg.tags.clear()
                         for tag in missing[f["id"]]["tags"]:
                             msg.tags.add(tag)
@@ -229,14 +248,15 @@ def sync_files(prefix, missing, from_stream, to_stream):
         await asyncio.gather(send_files(), recv_files())
 
     asyncio.run(sync())
+    args.verbose > 0 and print("Missing files synced.")
 
     return changes
 
 
 def sync_remote(args):
-    prefix, changes_mine, changes_theirs, tchanges = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
-    missing, fchanges = get_missing_files(changes_mine, changes_theirs, prefix)
-    rchanges = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
+    prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, sys.stdin.buffer, sys.stdout.buffer)
+    missing, fchanges = get_missing_files(args, changes_mine, changes_theirs, prefix)
+    rchanges = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIII", tchanges, fchanges,
                                         rchanges["messages"],
                                         rchanges["files"]))
@@ -248,6 +268,8 @@ def sync_local(args):
         cmd = shlex.split(args.remote_cmd)
     else:
         cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path}"]
+
+    args.verbose > 0 and print("Connecting to remote...")
     proc = subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -260,10 +282,13 @@ def sync_local(args):
     to_remote = proc.stdin
 
     try:
-        prefix, changes_mine, changes_theirs, tchanges = initial_sync(from_remote, to_remote)
-        missing, fchanges = get_missing_files(changes_mine, changes_theirs, prefix)
-        rchanges = sync_files(prefix, missing, from_remote, to_remote)
+        prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, from_remote, to_remote)
+        args.verbose > 1 and print(f"Local changes {changes_mine}, remote changes {changes_theirs}.")
+        missing, fchanges = get_missing_files(args, changes_mine, changes_theirs, prefix)
+        args.verbose > 1 and print(f"Local missing files {missing}.")
+        rchanges = sync_files(args, prefix, missing, from_remote, to_remote)
 
+        args.verbose > 0 and print("Getting change numbers from remote...")
         remote_changes = struct.unpack("!IIII", from_remote.read(4 * 4))
     finally:
         if select.select([err_remote], [], [], 0)[0]:
@@ -282,7 +307,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--remote", type=str, help="remote host to connect to")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
-    parser.add_argument("-v", "--progress", action="store_true", help="show progress, not just summary")
+    parser.add_argument("-v", "--verbose", action="count", default=0, help="increases verbosity, up to twice (ignored on remote)")
     parser.add_argument("-q", "--quiet", action="store_true", help="do not print summary")
     parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use")
     parser.add_argument("-m", "--mbsync", action="store_true", help="sync mbsync files (.mbsyncstate, .uidvalidity)")
@@ -294,4 +319,5 @@ if __name__ == "__main__":
     if args.remote or args.remote_cmd:
         sync_local(args)
     else:
+        args.verbose = 0
         sync_remote(args)
