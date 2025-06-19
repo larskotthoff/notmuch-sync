@@ -141,9 +141,10 @@ def test_initial_sync():
             with patch("builtins.open", mock_open()) as o:
                 istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
                 ostream = io.BytesIO()
-                prefix, mine, theirs = ns.initial_sync(istream, ostream)
+                prefix, mine, theirs, nchanges = ns.initial_sync(istream, ostream)
                 assert mine == []
                 assert theirs == []
+                assert nchanges == 0
                 assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
 
                 o.assert_called_once_with(fname, "w", encoding="utf-8")
@@ -159,7 +160,8 @@ def test_initial_sync():
 
 def test_sync_tags_empty():
     db = lambda: None
-    ns.sync_tags(db, {}, {})
+    changes = ns.sync_tags(db, {}, {})
+    assert changes == 0
 
 
 def test_sync_tags_only_theirs():
@@ -180,7 +182,8 @@ def test_sync_tags_only_theirs():
     db = lambda: None
     db.find = MagicMock(return_value=m)
 
-    ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+    changes = ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+    assert changes == 1
 
     db.find.assert_called_once_with("foo")
     m.frozen.assert_called_once()
@@ -204,7 +207,8 @@ def test_sync_tags_only_theirs_no_changes():
     db = lambda: None
     db.find = MagicMock(return_value=m)
 
-    ns.sync_tags(db, {}, {"foo": {"tags": ["foo", "bar"]}})
+    changes = ns.sync_tags(db, {}, {"foo": {"tags": ["foo", "bar"]}})
+    assert changes == 0
 
     db.find.assert_called_once_with("foo")
 
@@ -214,14 +218,16 @@ def test_sync_tags_only_theirs_not_found():
     db.find = MagicMock()
     db.find.side_effect = LookupError()
 
-    ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+    changes = ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+    assert changes == 0
 
     db.find.assert_called_once_with("foo")
 
 
 def test_sync_tags_only_mine():
     db = lambda: None
-    ns.sync_tags(db, {"foo": {"tags": ["foo", "bar"]}}, {})
+    changes = ns.sync_tags(db, {"foo": {"tags": ["foo", "bar"]}}, {})
+    assert changes == 0
 
 
 def test_sync_tags_mine_theirs_no_overlap():
@@ -242,7 +248,8 @@ def test_sync_tags_mine_theirs_no_overlap():
     db = lambda: None
     db.find = MagicMock(return_value=m)
 
-    ns.sync_tags(db, {"bar": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+    changes = ns.sync_tags(db, {"bar": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+    assert changes == 1
 
     db.find.assert_called_once_with("foo")
     m.frozen.assert_called_once()
@@ -272,7 +279,8 @@ def test_sync_tags_mine_theirs_overlap():
     db = lambda: None
     db.find = MagicMock(return_value=m)
 
-    ns.sync_tags(db, {"foo": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+    changes = ns.sync_tags(db, {"foo": {"tags": ["tag1", "tag2"]}}, {"foo": {"tags": ["bar", "foobar"]}})
+    assert changes == 1
 
     db.find.assert_called_once_with("foo")
     m.frozen.assert_called_once()
@@ -327,7 +335,7 @@ def test_missing_files_empty():
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        assert {} == ns.get_missing_files({}, prefix)
+        assert ({}, 0) == ns.get_missing_files({}, prefix)
 
 
 def test_missing_files_new():
@@ -352,7 +360,7 @@ def test_missing_files_new():
     with patch("notmuch2.Database", return_value=mock_ctx):
         exp = {"bar": {"tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
-        assert exp == ns.get_missing_files(changes, prefix)
+        assert (exp, 0) == ns.get_missing_files(changes, prefix)
 
     m.filenames.assert_called_once()
     assert db.find.mock_calls == [call('foo'), call('bar')]
@@ -380,7 +388,7 @@ def test_missing_files_moved():
                     changes = {"foo": {"tags": ["foo"],
                                        "files": [{"name": f2.name.removeprefix(prefix),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                    assert {} == ns.get_missing_files(changes, prefix)
+                    assert ({}, 1) == ns.get_missing_files(changes, prefix)
 
                     sm.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
@@ -415,7 +423,7 @@ def test_missing_files_copied():
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                              {"name": f.name.removeprefix(prefix),
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                assert {} == ns.get_missing_files(changes, prefix)
+                assert ({}, 1) == ns.get_missing_files(changes, prefix)
 
                 sc.assert_called_once_with(f1.name, f.name)
 
@@ -446,7 +454,7 @@ def test_missing_files_added():
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                                  {"name": "bar", "sha": "abc"}]}}
                     exp = {"foo": {"files": [{"name": "bar", "sha": "abc"}]}}
-                    assert exp == ns.get_missing_files(changes, prefix)
+                    assert (exp, 0) == ns.get_missing_files(changes, prefix)
                 assert sm.call_count == 0
                 assert sc.call_count == 0
 
@@ -492,7 +500,8 @@ def test_recv_file_checksum():
 def test_sync_files_nothing():
     istream = io.BytesIO(b"\x00\x00\x00\x00")
     ostream = io.BytesIO()
-    ns.sync_files(prefix, {}, istream, ostream)
+    changes = ns.sync_files(prefix, {}, istream, ostream)
+    assert {"files": 0, "messages": 0} == changes
     out = ostream.getvalue()
     assert b"\x00\x00\x00\x00" == out
 
@@ -523,7 +532,8 @@ def test_sync_files_recv_add():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.sync_files(prefix, missing, istream, ostream)
+            changes = ns.sync_files(prefix, missing, istream, ostream)
+            assert {"files": 2, "messages": 0} == changes
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -578,7 +588,8 @@ def test_sync_files_recv_new():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            ns.sync_files(prefix, missing, istream, ostream)
+            changes = ns.sync_files(prefix, missing, istream, ostream)
+            assert {"files": 2, "messages": 1} == changes
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -615,7 +626,8 @@ def test_sync_files_send():
                 f2.flush()
                 istream = io.BytesIO(b"\x00\x00\x00\x02" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + struct.pack("!I", len(f2.name)) + f2.name.encode("utf-8"))
                 ostream = io.BytesIO()
-                ns.sync_files(prefix, missing, istream, ostream)
+                changes = ns.sync_files(prefix, missing, istream, ostream)
+                assert {"files": 0, "messages": 0} == changes
                 out = ostream.getvalue()
                 assert b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
 
@@ -644,7 +656,8 @@ def test_sync_files_send_recv_add():
         with patch("notmuch2.Database", return_value=mock_ctx):
             istream = io.BytesIO(b"\x00\x00\x00\x01" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
             ostream = io.BytesIO()
-            ns.sync_files(prefix, missing, istream, ostream)
+            changes = ns.sync_files(prefix, missing, istream, ostream)
+            assert {"files": 2, "messages": 0} == changes
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls

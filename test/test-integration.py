@@ -19,6 +19,7 @@ def sync(shell, local_conf, remote_conf):
                     env={"NOTMUCH_CONFIG": local_conf})
     #print(res)
     assert res.returncode == 0
+    return res.stdout
 
 
 def test_sync(shell):
@@ -36,7 +37,9 @@ def test_sync(shell):
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[0] == "4"
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -48,7 +51,9 @@ def test_sync(shell):
             with open(remote_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"4 {rsum[1]}"
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"4 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -75,7 +80,9 @@ def test_sync_tags(shell):
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[0] == "4"
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
@@ -99,7 +106,9 @@ def test_sync_tags(shell):
             assert shell.run("notmuch", "tag", "+remote", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org",
                              env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t3 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t3 messages with tag changes" == out[1]
 
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:874llc2bkp.fsf@curie.anarc.at",
                              env={"NOTMUCH_CONFIG": local_conf}).data == ["attachment", "local"]
@@ -127,6 +136,10 @@ def test_sync_tags(shell):
             assert lsum[2] == "10\n"
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[2] == "10\n"
+
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
 
 
 def test_sync_tags_files(shell):
@@ -158,7 +171,9 @@ def test_sync_tags_files(shell):
             assert shell.run("notmuch", "tag", "+remote", "id:874llc2bkp.fsf@curie.anarc.at",
                              env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t2 new messages,\t2 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t2 new messages,\t2 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
@@ -201,6 +216,14 @@ def test_sync_tags_files(shell):
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[2] == "8\n"
 
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
+            with open(local_sync_file, "r", encoding="utf-8") as f:
+                assert f.read() == f"8 {lsum[1]}"
+            with open(remote_sync_file, "r", encoding="utf-8") as f:
+                assert f.read() == f"8 {rsum[1]}"
+
 
 def test_sync_tags_files_none_remote(shell):
     with TemporaryDirectory() as local:
@@ -225,7 +248,9 @@ def test_sync_tags_files_none_remote(shell):
             assert shell.run("notmuch", "tag", "+local", "id:874llc2bkp.fsf@curie.anarc.at",
                              env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
 
-            sync(shell, local_conf, remote_conf)
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t4 new messages,\t4 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
 
             assert Path(os.path.join(remote, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(remote, "mails", "calendar.eml")).exists()
@@ -265,3 +290,11 @@ def test_sync_tags_files_none_remote(shell):
             assert lsum[2] == "8\n"
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
             assert rsum[2] == "8\n"
+
+            out = sync(shell, local_conf, remote_conf).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 messages with tag changes" == out[1]
+            with open(local_sync_file, "r", encoding="utf-8") as f:
+                assert f.read() == f"8 {lsum[1]}"
+            with open(remote_sync_file, "r", encoding="utf-8") as f:
+                assert f.read() == f"8 {rsum[1]}"
