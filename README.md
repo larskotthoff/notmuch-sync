@@ -14,4 +14,4 @@ The communication protocol is binary. This is what the script produces on stdout
 - for each of the files requested by the other side:
     - 4 bytes unsigned int length of requested file
     - requested file
-- remote only: 4 x 4 bytes with number of tag changes, copied/moved files, new messages, new files
+- from remote only: 4 x 4 bytes with number of tag changes, copied/moved files, new messages, new files
