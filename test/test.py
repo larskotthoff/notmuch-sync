@@ -349,14 +349,13 @@ def test_sync_server(monkeypatch):
 def test_missing_files_empty():
     db = lambda: None
     args = lambda: None
-    args.verbose = 0
 
     mock_ctx = MagicMock()
     mock_ctx.__enter__.return_value = db
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        assert ({}, 0) == ns.get_missing_files(args, {}, {}, prefix)
+        assert ({}, 0, 0) == ns.get_missing_files(args, {}, {}, prefix)
 
 
 def test_missing_files_new():
@@ -365,6 +364,7 @@ def test_missing_files_new():
     db = lambda: None
     args = lambda: None
     args.verbose = 0
+    args.delete = False
 
     def effect(*args, **kwargs):
         yield m
@@ -383,7 +383,7 @@ def test_missing_files_new():
     with patch("notmuch2.Database", return_value=mock_ctx):
         exp = {"bar": {"tags": ["bar"],
                        "files": [{"name": "foo", "sha": "def"}]}}
-        assert (exp, 0) == ns.get_missing_files(args, {}, changes, prefix)
+        assert (exp, 0, 0) == ns.get_missing_files(args, {}, changes, prefix)
 
     m.filenames.assert_called_once()
     assert db.find.mock_calls == [call('foo'), call('bar')]
@@ -394,6 +394,7 @@ def test_missing_files_inconsistent():
     db = lambda: None
     args = lambda: None
     args.verbose = 0
+    args.delete = False
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
@@ -418,7 +419,7 @@ def test_missing_files_inconsistent():
                     changes_theirs = {"foo": {"tags": ["foo"],
                                               "files": [{"name": f2.name.removeprefix(prefix),
                                                          "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                    assert ({}, 1) == ns.get_missing_files(args, changes_mine, changes_theirs, prefix)
+                    assert ({}, 1, 0) == ns.get_missing_files(args, changes_mine, changes_theirs, prefix)
 
                     sc.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
@@ -433,6 +434,7 @@ def test_missing_files_moved():
     db = lambda: None
     args = lambda: None
     args.verbose = 0
+    args.delete = False
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
@@ -452,7 +454,7 @@ def test_missing_files_moved():
                     changes = {"foo": {"tags": ["foo"],
                                        "files": [{"name": f2.name.removeprefix(prefix),
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                    assert ({}, 1) == ns.get_missing_files(args, {}, changes, prefix)
+                    assert ({}, 1, 0) == ns.get_missing_files(args, {}, changes, prefix)
 
                     sm.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
@@ -467,6 +469,7 @@ def test_missing_files_copied():
     db = lambda: None
     args = lambda: None
     args.verbose = 0
+    args.delete = False
 
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
@@ -489,7 +492,7 @@ def test_missing_files_copied():
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                              {"name": f.name.removeprefix(prefix),
                                               "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                assert ({}, 1) == ns.get_missing_files(args, {}, changes, prefix)
+                assert ({}, 1, 0) == ns.get_missing_files(args, {}, changes, prefix)
 
                 sc.assert_called_once_with(f1.name, f.name)
 
@@ -503,6 +506,7 @@ def test_missing_files_added():
     db = lambda: None
     args = lambda: None
     args.verbose = 0
+    args.delete = False
 
     db.find = MagicMock(return_value=m)
 
@@ -522,9 +526,174 @@ def test_missing_files_added():
                                                   "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"},
                                                  {"name": "bar", "sha": "abc"}]}}
                     exp = {"foo": {"files": [{"name": "bar", "sha": "abc"}]}}
-                    assert (exp, 0) == ns.get_missing_files(args, {}, changes, prefix)
+                    assert (exp, 0, 0) == ns.get_missing_files(args, {}, changes, prefix)
                 assert sm.call_count == 0
                 assert sc.call_count == 0
+
+    db.find.assert_called_once_with("foo")
+    assert m.filenames.call_count == 2
+
+
+def test_missing_files_delete():
+    m = MagicMock()
+    db = lambda: None
+    args = lambda: None
+    args.verbose = 0
+    args.delete = True
+
+    db.find = MagicMock(return_value=m)
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.copy") as sc:
+            with patch("shutil.move") as sm:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                        m.filenames = MagicMock(return_value=[f1.name, f2.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        changes = {"foo": {"tags": ["foo"],
+                                           "files": [{"name": f1.name.removeprefix(prefix),
+                                                      "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                        assert ({}, 0, 1) == ns.get_missing_files(args, {}, changes, prefix)
+                assert sm.call_count == 0
+                assert sc.call_count == 0
+
+    db.remove.assert_called_once_with(f2.name)
+    assert db.find.mock_calls == [
+        call("foo"),
+        call("foo")
+    ]
+    assert m.filenames.call_count == 2
+
+
+def test_missing_files_delete_changed():
+    m = MagicMock()
+    db = lambda: None
+    args = lambda: None
+    args.verbose = 0
+    args.delete = True
+
+    db.find = MagicMock(return_value=m)
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.copy") as sc:
+            with patch("shutil.move") as sm:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                        m.filenames = MagicMock(return_value=[f1.name, f2.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        changes_theirs = {"foo": {"tags": ["foo"],
+                                                  "files": [{"name": f1.name.removeprefix(prefix),
+                                                             "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                        changes_mine = {"foo": {"tags": ["foo"],
+                                                "files": [{"name": f2.name.removeprefix(prefix),
+                                                           "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                        assert ({}, 0, 0) == ns.get_missing_files(args, changes_mine, changes_theirs, prefix)
+                assert sm.call_count == 0
+                assert sc.call_count == 0
+
+    assert db.remove.call_count == 0
+    db.find.assert_called_once_with("foo")
+    assert m.filenames.call_count == 1
+
+
+def test_missing_files_copy_delete():
+    m = MagicMock()
+    db = lambda: None
+    args = lambda: None
+    args.verbose = 0
+    args.delete = True
+
+    db.find = MagicMock(return_value=m)
+    db.add = MagicMock()
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.move") as sm:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
+                        m.filenames = MagicMock()
+                        m.filenames.side_effect = [[f1.name, f3.name], [f1.name, f3.name], [f2.name, f3.name]]
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        f3.write("not mail one")
+                        f3.flush()
+                        changes_theirs = {"foo": {"tags": ["foo"],
+                                                  "files": [{"name": f2.name.removeprefix(prefix),
+                                                             "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                        assert ({}, 1, 1) == ns.get_missing_files(args, {}, changes_theirs, prefix)
+
+                        sm.assert_called_once_with(f1.name, f2.name)
+                        db.add.assert_called_once_with(f2.name)
+                        assert db.remove.mock_calls == [
+                            call(f1.name),
+                            call(f3.name)
+                        ]
+
+    assert db.find.mock_calls == [
+        call("foo"),
+        call("foo")
+    ]
+    assert m.filenames.call_count == 3
+
+
+def test_missing_files_delete_inconsistent():
+    m = MagicMock()
+    db = lambda: None
+    args = lambda: None
+    args.verbose = 0
+    args.delete = True
+
+    db.find = MagicMock(return_value=m)
+    db.add = MagicMock(return_value=(m, True))
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.copy") as sc:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail one")
+                    f1.flush()
+                    f2.write("mail one")
+                    f2.flush()
+                    changes_mine = {"foo": {"tags": ["foo"],
+                                            "files": [{"name": f1.name.removeprefix(prefix),
+                                                       "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    changes_theirs = {"foo": {"tags": ["foo"],
+                                              "files": [{"name": f2.name.removeprefix(prefix),
+                                                         "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    assert ({}, 1, 0) == ns.get_missing_files(args, changes_mine, changes_theirs, prefix)
+
+                    sc.assert_called_once_with(f1.name, f2.name)
+                    db.add.assert_called_once_with(f2.name)
+                    assert db.remove.call_count == 0
 
     db.find.assert_called_once_with("foo")
     assert m.filenames.call_count == 2
