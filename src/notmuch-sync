@@ -267,12 +267,59 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     return changes
 
 
+def sync_deletes(args, from_stream, to_stream):
+    ids = {}
+    dels = 0
+    with notmuch2.Database() as db:
+        args.verbose > 0 and print("Getting all message IDs from DB...")
+        msgs = db.messages('*')
+        ids["mine"] = [ msg.messageid for msg in msgs ]
+
+    async def send_ids():
+        args.verbose > 0 and print("Sending all message IDs...")
+        to_stream.write(struct.pack("!I", len(ids["mine"])))
+        to_stream.flush()
+        for i in ids["mine"]:
+            write(i.encode("utf-8"), to_stream)
+
+    async def recv_ids():
+        args.verbose > 0 and print("Receving all message IDs...")
+        size_data = from_stream.read(4)
+        nids = struct.unpack("!I", size_data)[0]
+        ids["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
+
+    async def sync_ids():
+        await asyncio.gather(send_ids(), recv_ids())
+
+    asyncio.run(sync_ids())
+    args.verbose > 0 and print("Message IDs synced.")
+
+    to_del = set(ids["mine"]) - set(ids["theirs"])
+    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+        for id in to_del:
+            dels += 1
+            args.verbose > 0 and print(f"Removing {d} from DB and deleting files.")
+            try:
+                msg = dbw.find(id)
+                for f in msg.filenames():
+                    args.verbose > 1 and print(f"Removing {f}.")
+                    dbw.remove(f)
+                    Path(f).unlink()
+            except LookupError:
+                # already deleted? doesn't matter
+                pass
+    return dels
+
+
 def sync_remote(args):
     prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, sys.stdin.buffer, sys.stdout.buffer)
     missing, fchanges, dfchanges = get_missing_files(args, changes_mine, changes_theirs, prefix)
     rchanges = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
-    sys.stdout.buffer.write(struct.pack("!IIIII", tchanges, fchanges, dfchanges,
-                                        rchanges["messages"],
+    dchanges = 0
+    if args.delete:
+        dchanges = sync_deletes(args, sys.stdin.buffer, sys.stdout.buffer)
+    sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
+                                        rchanges["messages"], dchanges,
                                         rchanges["files"]))
     sys.stdout.buffer.flush()
 
@@ -281,7 +328,10 @@ def sync_local(args):
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
-        cmd = shlex.split(args.ssh_cmd) + [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path}"]
+        rargs = [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path}"]
+        if args.delete:
+            rargs.append("--delete")
+        cmd = shlex.split(args.ssh_cmd) + rargs
 
     args.verbose > 0 and print("Connecting to remote...")
     proc = subprocess.Popen(
@@ -301,9 +351,12 @@ def sync_local(args):
         missing, fchanges, dfchanges  = get_missing_files(args, changes_mine, changes_theirs, prefix)
         args.verbose > 1 and print(f"Local missing files {missing}.")
         rchanges = sync_files(args, prefix, missing, from_remote, to_remote)
+        dchanges = 0
+        if args.delete:
+            dchanges = sync_deletes(args, from_remote, to_remote)
 
         args.verbose > 0 and print("Getting change numbers from remote...")
-        remote_changes = struct.unpack("!IIIII", from_remote.read(5 * 4))
+        remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
     finally:
         if select.select([err_remote], [], [], 0)[0]:
             print(f"Remote error: {err_remote.read()}", file=sys.stderr)
@@ -314,8 +367,8 @@ def sync_local(args):
     proc.wait()
 
     if not args.quiet:
-        print(f"local:\t{rchanges["messages"]} new messages,\t{rchanges["files"]} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes")
-        print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[4]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes")
+        print(f"local:\t{rchanges["messages"]} new messages,\t{rchanges["files"]} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
+        print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[5]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes,\t{remote_changes[4]} messages deleted")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
