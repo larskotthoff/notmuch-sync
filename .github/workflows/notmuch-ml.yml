@@ -68,5 +68,5 @@ jobs:
     - run: sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
     - run: sudo -u synctest rm -f `cat /tmp/todel`
     - run: sudo -u synctest notmuch new
-    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+    - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
     - run: diff -rq $GITHUB_WORKSPACE/notmuch-list /home/synctest/notmuch-list || exit 0
