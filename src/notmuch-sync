@@ -268,42 +268,82 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     return changes
 
 
-def sync_deletes(args, from_stream, to_stream):
+# Separate methods for local and remote to avoid sending all IDs both ways --
+# have local figure out what needs to be deleted on both sides
+def sync_deletes_local(args, from_stream, to_stream):
     ids = {}
-    dels = 0
-    with notmuch2.Database() as db:
-        args.verbose > 0 and print("Getting all message IDs from DB...")
-        msgs = db.messages('*')
-        ids["mine"] = [ msg.messageid for msg in msgs ]
+    dels = {'a': 0}
 
-    async def send_ids():
-        args.verbose > 0 and print("Sending all message IDs...")
-        to_stream.write(struct.pack("!I", len(ids["mine"])))
-        to_stream.flush()
-        for i in ids["mine"]:
-            write(i.encode("utf-8"), to_stream)
+    async def get_ids():
+        with notmuch2.Database() as db:
+            args.verbose > 0 and print("Getting all message IDs from DB...")
+            msgs = db.messages('*')
+            ids["mine"] = [ msg.messageid for msg in msgs ]
 
     async def recv_ids():
-        args.verbose > 0 and print("Receving all message IDs...")
+        args.verbose > 0 and print("Receiving all message IDs from remote...")
         size_data = from_stream.read(4)
         nids = struct.unpack("!I", size_data)[0]
         ids["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
 
     async def sync_ids():
-        await asyncio.gather(send_ids(), recv_ids())
+        await asyncio.gather(get_ids(), recv_ids())
 
     asyncio.run(sync_ids())
     args.verbose > 0 and print("Message IDs synced.")
 
-    to_del = set(ids["mine"]) - set(ids["theirs"])
+    async def send_del_ids():
+        to_del_remote = set(ids["theirs"]) - set(ids["mine"])
+        args.verbose > 0 and print("Sending message IDs to be deleted to remote...")
+        to_stream.write(struct.pack("!I", len(to_del_remote)))
+        to_stream.flush()
+        for id in to_del_remote:
+            write(id.encode("utf-8"), to_stream)
+
+    async def del_ids():
+        to_del = set(ids["mine"]) - set(ids["theirs"])
+        with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+            for id in to_del:
+                dels["a"] += 1
+                args.verbose > 0 and print(f"Removing {id} from DB and deleting files.")
+                try:
+                    msg = dbw.find(id)
+                    for f in msg.filenames():
+                        args.verbose > 1 and print(f"Removing {f}.")
+                        dbw.remove(f)
+                        Path(f).unlink()
+                except LookupError:
+                    # already deleted? doesn't matter
+                    pass
+
+    async def sync_dels():
+        await asyncio.gather(send_del_ids(), del_ids())
+
+    asyncio.run(sync_dels())
+    return dels["a"]
+
+
+def sync_deletes_remote(from_stream, to_stream):
+    dels = 0
+    with notmuch2.Database() as db:
+        msgs = db.messages('*')
+        ids = [ msg.messageid for msg in msgs ]
+
+    to_stream.write(struct.pack("!I", len(ids)))
+    to_stream.flush()
+    for i in ids:
+        write(i.encode("utf-8"), to_stream)
+
+    size_data = from_stream.read(4)
+    nids = struct.unpack("!I", size_data)[0]
+    to_del = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
+
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
         for id in to_del:
             dels += 1
-            args.verbose > 0 and print(f"Removing {id} from DB and deleting files.")
             try:
                 msg = dbw.find(id)
                 for f in msg.filenames():
-                    args.verbose > 1 and print(f"Removing {f}.")
                     dbw.remove(f)
                     Path(f).unlink()
             except LookupError:
@@ -318,7 +358,7 @@ def sync_remote(args):
     rchanges = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     dchanges = 0
     if args.delete:
-        dchanges = sync_deletes(args, sys.stdin.buffer, sys.stdout.buffer)
+        dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
                                         rchanges["messages"], dchanges,
                                         rchanges["files"]))
@@ -354,7 +394,7 @@ def sync_local(args):
         rchanges = sync_files(args, prefix, missing, from_remote, to_remote)
         dchanges = 0
         if args.delete:
-            dchanges = sync_deletes(args, from_remote, to_remote)
+            dchanges = sync_deletes_local(args, from_remote, to_remote)
 
         args.verbose > 0 and print("Getting change numbers from remote...")
         remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))

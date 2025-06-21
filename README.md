@@ -15,8 +15,14 @@ The communication protocol is binary. This is what the script produces on stdout
     - 4 bytes unsigned int length of requested file
     - requested file
 - if --delete is given:
-    - 4 bytes unsigned int number of IDs in the DB
-    - for each of the IDs:
-        - 4 bytes unsigned int length of ID
-        - ID
+    - remote to local:
+        - 4 bytes unsigned int number of IDs in the DB
+        - for each of the IDs:
+            - 4 bytes unsigned int length of ID
+            - ID
+    - local to remote:
+        - 4 bytes unsigned int number of IDs to delete
+        - for each of the IDs:
+            - 4 bytes unsigned int length of ID
+            - ID
 - from remote only: 6 x 4 bytes with number of tag changes, copied/moved files, deleted files, new messages, deleted messages, new files

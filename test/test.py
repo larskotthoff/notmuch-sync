@@ -936,7 +936,7 @@ def test_sync_files_send_recv_add():
     assert res == out
 
 
-def test_sync_deletes():
+def test_sync_deletes_local():
     args = lambda: None
     args.verbose = 0
 
@@ -959,7 +959,7 @@ def test_sync_deletes():
         with patch("pathlib.Path.unlink") as pu:
             istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
             ostream = io.BytesIO()
-            assert 1 == ns.sync_deletes(args, istream, ostream)
+            assert 1 == ns.sync_deletes_local(args, istream, ostream)
             pu.assert_called_once()
 
     db.messages.assert_called_once_with("*")
@@ -968,10 +968,10 @@ def test_sync_deletes():
     m2.filenames.assert_called_once()
 
     out = ostream.getvalue()
-    assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+    assert b"\x00\x00\x00\x00" == out
 
 
-def test_sync_deletes_none():
+def test_sync_deletes_local_none():
     args = lambda: None
     args.verbose = 0
 
@@ -992,7 +992,73 @@ def test_sync_deletes_none():
         with patch("pathlib.Path.unlink") as pu:
             istream = io.BytesIO(b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar")
             ostream = io.BytesIO()
-            assert 0 == ns.sync_deletes(args, istream, ostream)
+            assert 0 == ns.sync_deletes_local(args, istream, ostream)
+            assert pu.call_count == 0
+
+    db.messages.assert_called_once_with("*")
+    assert db.remove.call_count == 0
+
+    out = ostream.getvalue()
+    assert b"\x00\x00\x00\x00" == out
+
+
+def test_sync_deletes_remote():
+    args = lambda: None
+    args.verbose = 0
+
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            ostream = io.BytesIO()
+            assert 1 == ns.sync_deletes_remote(istream, ostream)
+            pu.assert_called_once()
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    db.remove.assert_called_once_with("barfile")
+    m2.filenames.assert_called_once()
+
+    out = ostream.getvalue()
+    assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+
+
+def test_sync_deletes_remote_none():
+    args = lambda: None
+    args.verbose = 0
+
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x00")
+            ostream = io.BytesIO()
+            assert 0 == ns.sync_deletes_remote(istream, ostream)
             assert pu.call_count == 0
 
     db.messages.assert_called_once_with("*")
