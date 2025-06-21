@@ -388,6 +388,7 @@ def sync_local(args):
     err_remote = proc.stderr
     to_remote = proc.stdin
 
+    data = b''
     try:
         prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, from_remote, to_remote)
         args.verbose > 1 and print(f"Local changes {changes_mine}, remote changes {changes_theirs}.")
@@ -416,6 +417,11 @@ def sync_local(args):
     if not args.quiet:
         print(f"local:\t{rchanges["messages"]} new messages,\t{rchanges["files"]} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
         print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[5]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes,\t{remote_changes[4]} messages deleted")
+
+    if len(data) > 0:
+        # error output from remote
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
