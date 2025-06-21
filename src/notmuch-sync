@@ -294,6 +294,7 @@ def sync_deletes_local(args, from_stream, to_stream):
 
     async def send_del_ids():
         to_del_remote = set(ids["theirs"]) - set(ids["mine"])
+        args.verbose > 1 and print(f"Remote IDs to be deleted {to_del_remote}.")
         args.verbose > 0 and print("Sending message IDs to be deleted to remote...")
         to_stream.write(struct.pack("!I", len(to_del_remote)))
         to_stream.flush()
@@ -302,6 +303,7 @@ def sync_deletes_local(args, from_stream, to_stream):
 
     async def del_ids():
         to_del = set(ids["mine"]) - set(ids["theirs"])
+        args.verbose > 1 and print(f"Local IDs to be deleted {to_del}.")
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
             for id in to_del:
                 dels["a"] += 1
