@@ -403,7 +403,10 @@ def sync_local(args):
     finally:
         ready, _, exc = select([err_remote], [], [], 0)
         if ready and not exc:
-            print(f"Remote error: {err_remote.read()}", file=sys.stderr)
+            data = err_remote.read()
+            # getting zero data on EOF
+            if len(data) > 0:
+                print(f"Remote error: {data}", file=sys.stderr)
 
     to_remote.close()
     from_remote.close()
