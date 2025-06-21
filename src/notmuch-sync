@@ -16,15 +16,21 @@ from pathlib import Path
 
 import notmuch2
 
+transfer = {"read": 0, "write": 0}
+
 def write(data, stream):
     stream.write(struct.pack("!I", len(data)))
+    transfer["write"] += 4
     stream.write(data)
+    transfer["write"] += len(data)
     stream.flush()
 
 
 def read(stream):
     size_data = stream.read(4)
+    transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
+    transfer["read"] += size
     return stream.read(size)
 
 
@@ -91,11 +97,13 @@ def initial_sync(args, from_stream, to_stream):
         async def send_uuid():
             args.verbose > 0 and print("Sending UUID...")
             to_stream.write(uuids["mine"].encode("utf-8"))
+            transfer["write"] += 36
             to_stream.flush()
 
         async def recv_uuid():
             args.verbose > 0 and print("Receiving UUID...")
             uuids["theirs"] = from_stream.read(36).decode("utf-8")
+            transfer["read"] += 36
 
         async def sync_uuids():
             await asyncio.gather(send_uuid(), recv_uuid())
@@ -222,6 +230,7 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     async def send_fnames():
         args.verbose > 0 and print("Sending file names missing on local...")
         to_stream.write(struct.pack("!I", len(files["mine"])))
+        transfer["write"] += 4
         to_stream.flush()
         for f in files["mine"]:
             write(f["name"].encode("utf-8"), to_stream)
@@ -229,6 +238,7 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     async def recv_fnames():
         args.verbose > 0 and print("Receving file names missing on remote...")
         size_data = from_stream.read(4)
+        transfer["read"] += 4
         nfiles = struct.unpack("!I", size_data)[0]
         files["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
 
@@ -283,6 +293,7 @@ def sync_deletes_local(args, from_stream, to_stream):
     async def recv_ids():
         args.verbose > 0 and print("Receiving all message IDs from remote...")
         size_data = from_stream.read(4)
+        transfer["read"] += 4
         nids = struct.unpack("!I", size_data)[0]
         ids["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
 
@@ -297,6 +308,7 @@ def sync_deletes_local(args, from_stream, to_stream):
         args.verbose > 1 and print(f"Remote IDs to be deleted {to_del_remote}.")
         args.verbose > 0 and print("Sending message IDs to be deleted to remote...")
         to_stream.write(struct.pack("!I", len(to_del_remote)))
+        transfer["write"] += 4
         to_stream.flush()
         for id in to_del_remote:
             write(id.encode("utf-8"), to_stream)
@@ -332,11 +344,13 @@ def sync_deletes_remote(from_stream, to_stream):
         ids = [ msg.messageid for msg in msgs ]
 
     to_stream.write(struct.pack("!I", len(ids)))
+    transfer["write"] += 4
     to_stream.flush()
     for i in ids:
         write(i.encode("utf-8"), to_stream)
 
     size_data = from_stream.read(4)
+    transfer["read"] += 4
     nids = struct.unpack("!I", size_data)[0]
     to_del = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
 
@@ -401,6 +415,7 @@ def sync_local(args):
 
         args.verbose > 0 and print("Getting change numbers from remote...")
         remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
+        transfer["read"] += 6 * 4
     finally:
         ready, _, exc = select([err_remote], [], [], 0)
         if ready and not exc:
@@ -417,6 +432,7 @@ def sync_local(args):
     if not args.quiet:
         print(f"local:\t{rchanges["messages"]} new messages,\t{rchanges["files"]} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
         print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[5]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes,\t{remote_changes[4]} messages deleted")
+        print(f"{transfer["read"]}/{transfer["write"]} bytes received from/sent to remote.")
 
     if len(data) > 0:
         # error output from remote
