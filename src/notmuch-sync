@@ -6,7 +6,7 @@ import os
 import struct
 import subprocess
 import socket
-import select
+from select import select
 import json
 import shlex
 import shutil
@@ -401,7 +401,8 @@ def sync_local(args):
         args.verbose > 0 and print("Getting change numbers from remote...")
         remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
     finally:
-        if select.select([err_remote], [], [], 0)[0]:
+        ready, _, exc = select([err_remote], [], [], 0)
+        if ready and not exc:
             print(f"Remote error: {err_remote.read()}", file=sys.stderr)
 
     to_remote.close()
