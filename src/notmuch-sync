@@ -190,17 +190,22 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
                     ret[id] = {"files": [f for f in changes_theirs[id]["files"] if f["name"] in missing_mine]}
                 
                 # delete any files that are not there remotely after copy/move
-                if args.delete and id not in changes_mine:
-                    msg = db.find(id)
-                    fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
-                    to_delete = [ f for f in fnames_mine if f not in fnames_theirs ]
-                    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                        for f in to_delete:
-                            fname = os.path.join(prefix, f)
-                            dchanges += 1
-                            args.verbose > 0 and print(f"Removing {fname} from DB and deleting file.")
-                            dbw.remove(fname)
-                            Path(fname).unlink()
+                if id not in changes_mine:
+                    # need to reopen the DB here to get the new filenames after
+                    # move/copy
+                    with notmuch2.Database() as dbn:
+                        msg = dbn.find(id)
+                        fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
+                        if len(set(fnames_mine).intersection(fnames_theirs)) == 0:
+                            raise ValueError(f"Message '{id}' has {fnames_theirs} on remote and {fnames_mine} locally!")
+                        to_delete = set(fnames_mine) - set(fnames_theirs)
+                        with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                            for f in to_delete:
+                                fname = os.path.join(prefix, f)
+                                dchanges += 1
+                                args.verbose > 0 and print(f"Removing {fname} from DB and deleting file.")
+                                dbw.remove(fname)
+                                Path(fname).unlink()
             except LookupError:
                 # don't have this message; all files missing
                 ret[id] = changes_theirs[id]

@@ -21,7 +21,7 @@ def sync(shell, local_conf, remote_conf, verbose=False, delete=False):
     if delete:
         args.append("--delete")
     res = shell.run(*args, env={"NOTMUCH_CONFIG": local_conf})
-    #print(res)
+    print(res)
     assert res.returncode == 0
     return res.stdout
 
@@ -476,8 +476,10 @@ def test_sync_tags_files_moved(shell):
             assert Path(os.path.join(remote, "mails", "html-only1.eml")).exists()
 
             lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
+            assert lsum[0] == "4"
             assert lsum[2] == "11\n"
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
+            assert rsum[0] == "4"
             assert rsum[2] == "11\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
