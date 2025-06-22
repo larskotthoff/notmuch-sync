@@ -64,7 +64,7 @@ def sync_tags(args, db, changes_mine, changes_theirs):
     for id in changes_theirs:
         tags = changes_theirs[id]["tags"]
         if id in changes_mine:
-            tags = list(set(tags) | set(changes_mine[id]["tags"]))
+            tags = set(tags) | set(changes_mine[id]["tags"])
         tags = set(tags)
         try:
             msg = db.find(id)
