@@ -91,9 +91,9 @@ jobs:
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
-        mv /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
+        cp /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
         notmuch new
-        sudo -u synctest mv /tmp/temp1.mail /home/synctest/notmuch-list/
+        sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
         sudo -u synctest notmuch new
         time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
         notmuch dump | sort > /tmp/dump.local
