@@ -17,56 +17,90 @@ jobs:
 
     - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 wget ssh
 
-    - run: echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
-    - run: wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz && tar xf notmuch-list.tar.xz
-    - run: notmuch new
-    - run: notmuch tag -unread date:..1M
-    - run: notmuch tag +patch subject:patch or attachment:.patch
-    - run: notmuch tag +bug subject:bug or body:bug
-    - run: notmuch tag +question body:question or subject:'?'
-    - run: notmuch tag +todo date:1M.. and tag:patch
+    - run: |
+        echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
+        wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz
+        tar xf notmuch-list.tar.xz
+        notmuch new
+        notmuch tag -unread date:..1M
+        notmuch tag +patch subject:patch or attachment:.patch
+        notmuch tag +bug subject:bug or body:bug
+        notmuch tag +question body:question or subject:'?'
+        notmuch tag +todo date:1M.. and tag:patch
 
-    - run: sudo adduser --disabled-password --gecos "synctest" synctest
-    - run: echo -e "[database]\npath=/home/synctest/notmuch-list\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
-    - run: sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
-    - run: sudo -u synctest mkdir /home/synctest/notmuch-list
-    - run: sudo -u synctest notmuch new
+    - run: |
+        sudo adduser --disabled-password --gecos "synctest" synctest
+        echo -e "[database]\npath=/home/synctest/notmuch-list\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
+        sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
+        sudo -u synctest mkdir /home/synctest/notmuch-list
+        sudo -u synctest notmuch new
 
-    - run: mkdir ~/.ssh
-    - run: chmod 700 ~/.ssh
-    - run: ssh-keygen -N "" -f ~/.ssh/test
+    - run: |
+        mkdir ~/.ssh
+        chmod 700 ~/.ssh
+        ssh-keygen -N "" -f ~/.ssh/test
 
-    - run: sudo -u synctest mkdir /home/synctest/.ssh
-    - run: sudo -u synctest chmod 700 /home/synctest/.ssh
-    - run: sudo cp ~/.ssh/test.pub /home/synctest/.ssh/authorized_keys
-    - run: sudo chown synctest /home/synctest/.ssh/authorized_keys
-    - run: sudo chmod 600 /home/synctest/.ssh/authorized_keys
-    - run: sudo service ssh start
+    - run: |
+        sudo -u synctest mkdir /home/synctest/.ssh
+        sudo -u synctest chmod 700 /home/synctest/.ssh
+        sudo cp ~/.ssh/test.pub /home/synctest/.ssh/authorized_keys
+        sudo chown synctest /home/synctest/.ssh/authorized_keys
+        sudo chmod 600 /home/synctest/.ssh/authorized_keys
+        sudo service ssh start
 
-    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+    - run: |
+        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        notmuch dump > /tmp/dump.local
+        sudo -u synctest notmuch dump > /tmp/dump.remote
+        diff -u /tmp/dump.local /tmp/dump.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        diff -u /tmp/files.local /tmp/files.remote
 
-    - run: notmuch count '*' > /tmp/local.count
-    - run: sudo -u synctest notmuch count '*' > /tmp/remote.count
+    - run: |
+        if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
+        notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
+        if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
+        sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | grep -vq foo
 
-    - run: if [ `cat /tmp/remote.count` -neq `cat /tmp/local.count` ]; then exit 1; fi
-    - run: diff -rq $GITHUB_WORKSPACE/notmuch-list /home/synctest/notmuch-list || exit 0
-    
-    - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xquestion" ]; then exit 1; fi
-    - run: notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
-    - run: if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
-    - run: sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | grep -vq foo
+    - run: |
+        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        sudo -u synctest notmuch dump > /tmp/dump.remote
+        diff -u /tmp/dump.local /tmp/dump.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
 
-    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-    - run: diff -rq $GITHUB_WORKSPACE/notmuch-list /home/synctest/notmuch-list || exit 0
-    - run: sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | grep -q foo
+    - run: |
+        mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+        notmuch new
+        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        notmuch dump > /tmp/dump.local
+        sudo -u synctest notmuch dump > /tmp/dump.remote
+        diff -u /tmp/dump.local /tmp/dump.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        diff -u /tmp/files.local /tmp/files.remote
 
-    - run: rm -f `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none`
-    - run: notmuch new
-    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-    - run: diff -rq $GITHUB_WORKSPACE/notmuch-list /home/synctest/notmuch-list || exit 0
+    - run: |
+        sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
+        sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
+        sudo -u synctest notmuch new
+        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        notmuch dump > /tmp/dump.local
+        sudo -u synctest notmuch dump > /tmp/dump.remote
+        diff -u /tmp/dump.local /tmp/dump.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        diff -u /tmp/files.local /tmp/files.remote
 
-    - run: sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
-    - run: sudo -u synctest rm -f `cat /tmp/todel`
-    - run: sudo -u synctest notmuch new
-    - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-    - run: diff -rq $GITHUB_WORKSPACE/notmuch-list /home/synctest/notmuch-list || exit 0
+    - run: |
+        mv /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
+        notmuch new
+        sudo -u synctest mv /tmp/temp1.mail /home/synctest/notmuch-list/
+        sudo -u synctest notmuch new
+        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        notmuch dump > /tmp/dump.local
+        sudo -u synctest notmuch dump > /tmp/dump.remote
+        diff -u /tmp/dump.local /tmp/dump.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        diff -u /tmp/files.local /tmp/files.remote
