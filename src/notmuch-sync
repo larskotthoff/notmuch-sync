@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+"""notmuch-sync: Synchronize notmuch email databases and message files between local and remote systems."""
+
 import argparse
 import asyncio
 import hashlib
@@ -19,6 +21,13 @@ import notmuch2
 transfer = {"read": 0, "write": 0}
 
 def write(data, stream):
+    """
+    Write data to a stream with a 4-byte length prefix.
+
+    Args:
+        data (bytes): The data to write.
+        stream: A writable stream supporting .write() and .flush().
+    """
     stream.write(struct.pack("!I", len(data)))
     transfer["write"] += 4
     stream.write(data)
@@ -27,6 +36,15 @@ def write(data, stream):
 
 
 def read(stream):
+    """
+    Read 4-byte length-prefixed data from a stream.
+
+    Args:
+        stream: A readable stream supporting .read().
+
+    Returns:
+        bytes: The data read from the stream.
+    """
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
@@ -34,11 +52,22 @@ def read(stream):
     return stream.read(size)
 
 
-def get_changes(db, revision, prefix, fname):
-    """Get changes that happened since the last sync, or everything in the DB if no previous sync."""
+def get_changes(db, revision, prefix, sync_file):
+    """
+    Get changes that happened since the last sync, or everything in the DB if no previous sync.
+
+    Args:
+        db: An open notmuch2.Database object.
+        revision: Database revision object, must have .uuid and .rev.
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+        sync_file (str): Path to the file storing the sync state.
+
+    Returns:
+        dict: Mapping of message IDs to their tags and files.
+    """
     rev_prev = -1
     try:
-        with open(fname, 'r', encoding="utf-8") as f:
+        with open(sync_file, 'r', encoding="utf-8") as f:
             tmp = f.read().strip('\n\r').split(' ')
             uuid = revision.uuid.decode()
             try:
@@ -48,7 +77,7 @@ def get_changes(db, revision, prefix, fname):
                 if rev_prev > revision.rev:
                     sys.exit(f"Last sync revision {rev_prev} larger than current DB revision {revision.rev}, aborting...")
             except Exception:
-                sys.exit(f"Sync state file '{fname}' corrupted, delete to sync from scratch.")
+                sys.exit(f"Sync state file '{sync_file}' corrupted, delete to sync from scratch.")
     except FileNotFoundError:
         # no previous sync or sync file broken, leave rev_prev at 0 as this will sync entire DB
         pass
@@ -60,6 +89,22 @@ def get_changes(db, revision, prefix, fname):
 
 
 def sync_tags(args, db, changes_mine, changes_theirs):
+    """
+    Synchronize tags between local and remote changes. Applies tags from all
+    remotely changed IDs to local messages with the same ID, overwriting any
+    local tags. If an ID appears both in remote and local changes, take the
+    union of all tags. If a message is not found locally, do nothing (will be
+    synced later).
+
+    Args:
+        args: Parsed command-line arguments (should have 'verbose').
+        db: An open notmuch2.Database object.
+        changes_mine (dict): Local changes, mapping message IDs to tags.
+        changes_theirs (dict): Remote changes, mapping message IDs to tags.
+
+    Returns:
+        int: Number of tag changes made.
+    """
     changes = 0
     for mid in changes_theirs:
         tags = changes_theirs[mid]["tags"]
@@ -86,6 +131,21 @@ def sync_tags(args, db, changes_mine, changes_theirs):
 
 
 def initial_sync(args, from_stream, to_stream):
+    """
+    Perform the initial synchronization of UUIDs and tag changes, which includes
+    applying any remote tag changes to messages that exist locally. UUIDs and
+    changes are communicated to/from the remote over the respective streams.
+    Writes sync state file at the end.
+
+    Args:
+        args: Parsed command-line arguments (should have 'verbose').
+        from_stream: Stream to read from the remote.
+        to_stream: Stream to write to the remote.
+
+    Returns:
+        tuple: (prefix, local changes dict, remote changes dict, number of local
+                tag changes)
+    """
     # only do tag sync initially to avoid locking db during lengthy file transfers
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
         prefix = os.path.join(str(dbw.default_path()), '')
@@ -157,6 +217,22 @@ def initial_sync(args, from_stream, to_stream):
 
 
 def get_missing_files(args, changes_mine, changes_theirs, prefix):
+    """
+    Determine which files are missing locally compared to the remote, and handle
+    file moves/copies based on SHA256 checksums. Delete any files that aren't
+    there on the remote anymore, unless the message ID was also changed locally.
+    This never deletes a message, only duplicate files for a message.
+
+    Args:
+        args: Parsed command-line arguments (should have 'verbose').
+        changes_mine (dict): Local changes.
+        changes_theirs (dict): Remote changes.
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+
+    Returns:
+        tuple: (dict of missing files, number of local moves/copies, number of
+                local deletions)
+    """
     ret = {}
     mcchanges = 0
     dchanges = 0
@@ -225,11 +301,30 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
 
 
 def send_file(fname, stream):
+    """
+    Send a file's contents to a stream with 4-byte length prefix.
+
+    Args:
+        fname (str): Path to the file to send.
+        stream: Writable stream.
+    """
     with open(fname, "rb") as f:
         write(f.read(), stream)
 
 
 def recv_file(fname, stream, sha):
+    """
+    Receive a file with a 4-byte length prefix from a stream and write it to
+    disk, validating its checksum.
+
+    Args:
+        fname (str): Destination file path.
+        stream: Readable stream.
+        sha (str): Expected SHA256 checksum.
+
+    Raises:
+        ValueError: If received file's checksum does not match expected.
+    """
     content = read(stream)
     sha_mine = hashlib.new("sha256", content).hexdigest()
     if sha_mine != sha:
@@ -240,6 +335,19 @@ def recv_file(fname, stream, sha):
 
 
 def sync_files(args, prefix, missing, from_stream, to_stream):
+    """
+    Synchronize files that are missing locally or remotely.
+
+    Args:
+        args: Parsed command-line arguments.
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+        missing (dict): Mapping of missing files by message ID.
+        from_stream: Stream to read file names and files from.
+        to_stream: Stream to send file names and files to.
+
+    Returns:
+        tuple: (number of locally added messages, number of locally added files)
+    """
     files = {}
     files["mine"] = [ f | {"id": mid} for mid in missing for f in missing[mid]["files"] ]
     changes = {"files": len(files["mine"]), "messages": 0}
@@ -300,12 +408,24 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     if args.verbose > 0:
         print("Missing files synced.")
 
-    return changes
+    return (changes["messages"], changes["files"])
 
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
 # have local figure out what needs to be deleted on both sides
 def sync_deletes_local(args, from_stream, to_stream):
+    """
+    Synchronize deletions for the local database and instruct remote to delete
+    messages/files as needed.
+
+    Args:
+        args: Parsed command-line arguments.
+        from_stream: Stream to read from the remote.
+        to_stream: Stream to write to the remote.
+
+    Returns:
+        int: Number of deletions performed locally.
+    """
     ids = {}
     dels = {'a': 0}
 
@@ -371,6 +491,16 @@ def sync_deletes_local(args, from_stream, to_stream):
 
 
 def sync_deletes_remote(from_stream, to_stream):
+    """
+    Receive instructions from local to delete messages/files from the remote database.
+
+    Args:
+        from_stream: Stream to read from the local.
+        to_stream: Stream to write to the local.
+
+    Returns:
+        int: Number of deletions performed remotely.
+    """
     dels = 0
     with notmuch2.Database() as db:
         msgs = db.messages('*')
@@ -402,19 +532,31 @@ def sync_deletes_remote(from_stream, to_stream):
 
 
 def sync_remote(args):
+    """
+    Run synchronization in remote mode.
+
+    Args:
+        args: Parsed command-line arguments.
+    """
     prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, sys.stdin.buffer, sys.stdout.buffer)
     missing, fchanges, dfchanges = get_missing_files(args, changes_mine, changes_theirs, prefix)
-    rchanges = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
+    rmessages, rfiles = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     dchanges = 0
     if args.delete:
         dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
-                                        rchanges["messages"], dchanges,
-                                        rchanges["files"]))
+                                        rmessages, dchanges, rfiles))
     sys.stdout.buffer.flush()
 
 
 def sync_local(args):
+    """
+    Run synchronization in local mode, communicating with the remote over SSH or
+    a custom command.
+
+    Args:
+        args: Parsed command-line arguments.
+    """
     if args.remote_cmd:
         cmd = shlex.split(args.remote_cmd)
     else:
@@ -443,7 +585,7 @@ def sync_local(args):
             missing, fchanges, dfchanges  = get_missing_files(args, changes_mine, changes_theirs, prefix)
             if args.verbose > 1:
                 print(f"Local missing files {missing}.")
-            rchanges = sync_files(args, prefix, missing, from_remote, to_remote)
+            rmessages, rfiles = sync_files(args, prefix, missing, from_remote, to_remote)
             dchanges = 0
             if args.delete:
                 dchanges = sync_deletes_local(args, from_remote, to_remote)
@@ -465,7 +607,7 @@ def sync_local(args):
         err_remote.close()
 
     if not args.quiet:
-        print(f"local:\t{rchanges["messages"]} new messages,\t{rchanges["files"]} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
+        print(f"local:\t{rmessages} new messages,\t{rfiles} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
         print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[5]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes,\t{remote_changes[4]} messages deleted")
         print(f"{transfer["read"]}/{transfer["write"]} bytes received from/sent to remote.")
 
@@ -475,6 +617,10 @@ def sync_local(args):
 
 
 def main():
+    """
+    Entry point for the command-line interface. Parses arguments and dispatches
+    to local or remote sync.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("-r", "--remote", type=str, help="remote host to connect to")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")

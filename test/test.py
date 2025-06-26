@@ -780,8 +780,7 @@ def test_sync_files_nothing():
     args.verbose = 0
     istream = io.BytesIO(b"\x00\x00\x00\x00")
     ostream = io.BytesIO()
-    changes = ns.sync_files(args, prefix, {}, istream, ostream)
-    assert {"files": 0, "messages": 0} == changes
+    assert (0, 0) == ns.sync_files(args, prefix, {}, istream, ostream)
     out = ostream.getvalue()
     assert b"\x00\x00\x00\x00" == out
 
@@ -814,8 +813,7 @@ def test_sync_files_recv_add():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            changes = ns.sync_files(args, prefix, missing, istream, ostream)
-            assert {"files": 2, "messages": 0} == changes
+            assert (0, 2) == ns.sync_files(args, prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -872,8 +870,7 @@ def test_sync_files_recv_new():
 
     with patch("builtins.open", mock_open()) as o:
         with patch("notmuch2.Database", return_value=mock_ctx):
-            changes = ns.sync_files(args, prefix, missing, istream, ostream)
-            assert {"files": 2, "messages": 1} == changes
+            assert (1, 2) == ns.sync_files(args, prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
@@ -912,8 +909,7 @@ def test_sync_files_send():
                 f2.flush()
                 istream = io.BytesIO(b"\x00\x00\x00\x02" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + struct.pack("!I", len(f2.name)) + f2.name.encode("utf-8"))
                 ostream = io.BytesIO()
-                changes = ns.sync_files(args, prefix, missing, istream, ostream)
-                assert {"files": 0, "messages": 0} == changes
+                assert (0, 0) == ns.sync_files(args, prefix, missing, istream, ostream)
                 out = ostream.getvalue()
                 assert b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
 
@@ -944,8 +940,7 @@ def test_sync_files_send_recv_add():
         with patch("notmuch2.Database", return_value=mock_ctx):
             istream = io.BytesIO(b"\x00\x00\x00\x01" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
             ostream = io.BytesIO()
-            changes = ns.sync_files(args, prefix, missing, istream, ostream)
-            assert {"files": 2, "messages": 0} == changes
+            assert (0, 2) == ns.sync_files(args, prefix, missing, istream, ostream)
             assert call(f1.name, "wb") in o.mock_calls
             assert call().write(b'mail one\n') in o.mock_calls
             assert call(f2.name, "wb") in o.mock_calls
