@@ -244,6 +244,8 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
                 fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
                 missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
                 if len(missing_mine) > 0:
+                    if args.verbose > 0:
+                        print(msg.filenames())
                     hashes_mine = [{"name": str(f).removeprefix(prefix),
                                     "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()}
                                     for f in msg.filenames()]
