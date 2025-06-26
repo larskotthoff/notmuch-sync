@@ -50,11 +50,11 @@ jobs:
 
     - run: |
         time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-        notmuch dump > /tmp/dump.local
-        sudo -u synctest notmuch dump > /tmp/dump.remote
+        notmuch dump | sort > /tmp/dump.local
+        sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
-        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
-        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -62,22 +62,20 @@ jobs:
         notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
         if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
         sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | grep -vq foo
-
-    - run: |
         time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-        sudo -u synctest notmuch dump > /tmp/dump.remote
+        notmuch dump | sort > /tmp/dump.local
+        sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
-        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
 
     - run: |
         mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
         notmuch new
         time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-        notmuch dump > /tmp/dump.local
-        sudo -u synctest notmuch dump > /tmp/dump.remote
+        notmuch dump | sort > /tmp/dump.local
+        sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
-        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
-        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -85,11 +83,11 @@ jobs:
         sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
         sudo -u synctest notmuch new
         time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-        notmuch dump > /tmp/dump.local
-        sudo -u synctest notmuch dump > /tmp/dump.remote
+        notmuch dump | sort > /tmp/dump.local
+        sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
-        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
-        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -98,9 +96,9 @@ jobs:
         sudo -u synctest mv /tmp/temp1.mail /home/synctest/notmuch-list/
         sudo -u synctest notmuch new
         time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
-        notmuch dump > /tmp/dump.local
-        sudo -u synctest notmuch dump > /tmp/dump.remote
+        notmuch dump | sort > /tmp/dump.local
+        sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
-        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" > /tmp/files.local
-        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" > /tmp/files.remote
+        notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
