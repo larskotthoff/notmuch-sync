@@ -369,7 +369,6 @@ def test_missing_files_new():
 
     def effect(*args, **kwargs):
         yield m
-        yield m
         while True:
             yield LookupError
     db.find = MagicMock()
@@ -387,8 +386,8 @@ def test_missing_files_new():
                        "files": [{"name": "foo", "sha": "def"}]}}
         assert (exp, 0, 0) == ns.get_missing_files(args, {}, changes, prefix)
 
-    assert m.filenames.call_count == 2
-    assert db.find.mock_calls == [call('foo'), call('foo'), call('bar')]
+    assert m.filenames.call_count == 1
+    assert db.find.mock_calls == [call('foo'), call('bar')]
 
 
 def test_missing_files_inconsistent():
@@ -462,8 +461,8 @@ def test_missing_files_moved():
                     sm.assert_called_once_with(f1.name, f2.name)
                     db.add.assert_called_once_with(f2.name)
                     db.remove.assert_called_once_with(f1.name)
-                    assert m.filenames.call_count == 3
-                    assert db.find.mock_calls == [ call("foo"), call("foo") ]
+                    assert m.filenames.call_count == 2
+                    assert db.find.mock_calls == [ call("foo") ]
 
 
 def test_missing_files_copied():
@@ -498,9 +497,9 @@ def test_missing_files_copied():
 
                 sc.assert_called_once_with(f1.name, f.name)
 
-    assert db.find.mock_calls == [ call("foo"), call("foo") ]
+    assert m.filenames.call_count == 2
+    assert db.find.mock_calls == [ call("foo") ]
     db.add.assert_called_once_with(f.name)
-    assert m.filenames.call_count == 3
 
 
 def test_missing_files_added():
@@ -534,8 +533,8 @@ def test_missing_files_added():
                 assert sm.call_count == 0
                 assert sc.call_count == 0
 
-    assert db.find.mock_calls == [ call("foo"), call("foo") ]
-    assert m.filenames.call_count == 3
+    assert db.find.mock_calls == [ call("foo") ]
+    assert m.filenames.call_count == 2
 
 
 def test_missing_files_delete():
@@ -572,11 +571,8 @@ def test_missing_files_delete():
                 assert sm.call_count == 0
                 assert sc.call_count == 0
 
-    assert db.find.mock_calls == [
-        call("foo"),
-        call("foo")
-    ]
-    assert m.filenames.call_count == 2
+    assert db.find.mock_calls == [ call("foo") ]
+    assert m.filenames.call_count == 1
 
 
 def test_missing_files_delete_changed():
@@ -660,8 +656,8 @@ def test_missing_files_copy_delete():
                             ]
                             pu.assert_called_once()
 
-    assert db.find.mock_calls == [ call("foo"), call("foo") ]
-    assert m.filenames.call_count == 3
+    assert db.find.mock_calls == [ call("foo") ]
+    assert m.filenames.call_count == 2
 
 
 def test_missing_files_delete_inconsistent():
@@ -725,7 +721,7 @@ def test_missing_files_delete_mismatch():
                 with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
                     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
                         m.filenames = MagicMock(return_value=[f1.name])
-                        f1.write("mail one")
+                        f1.write("mail two")
                         f1.flush()
                         f2.write("mail one")
                         f2.flush()
@@ -735,13 +731,13 @@ def test_missing_files_delete_mismatch():
                         with pytest.raises(ValueError) as pwe:
                             ns.get_missing_files(args, {}, changes_theirs, prefix)
                         assert pwe.type == ValueError
-                        assert str(pwe.value) == f"Message 'foo' has ['{f2.name.removeprefix(prefix)}'] on remote and ['{f1.name.removeprefix(prefix)}'] locally!"
+                        assert str(pwe.value) == f"Message 'foo' has ['{f2.name.removeprefix(prefix)}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
 
-                        db.add.assert_called_once_with(f2.name)
+                        assert db.add.call_count == 0
                         assert pu.call_count == 0
 
-    assert db.find.mock_calls == [ call("foo"), call("foo") ]
-    assert m.filenames.call_count == 3
+    assert db.find.mock_calls == [ call("foo") ]
+    assert m.filenames.call_count == 2
 
 
 def test_send_file():
