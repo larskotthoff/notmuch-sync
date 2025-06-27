@@ -57,8 +57,8 @@ jobs:
         notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
         sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
-        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch" | sed "s|/home/synctest||" | sort > /tmp/files.remote
+        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch/*" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch/*" | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -87,8 +87,8 @@ jobs:
         notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
         sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
-        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch" | sed "s|/home/synctest||" | sort > /tmp/files.remote
+        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch/*" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch/*" | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -107,8 +107,8 @@ jobs:
         notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
         sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
-        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch" | sed "s|/home/synctest||" | sort > /tmp/files.remote
+        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch/*" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch/*" | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
 
     - run: |
@@ -132,6 +132,6 @@ jobs:
         notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
         sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
-        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch" | sed "s|/home/synctest||" | sort > /tmp/files.remote
+        find $GITHUB_WORKSPACE/notmuch-list -type f -not -path ".notmuch/*" | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+        sudo -u synctest find /home/synctest/notmuch-list -type f -not -path ".notmuch/*" | sed "s|/home/synctest||" | sort > /tmp/files.remote
         diff -u /tmp/files.local /tmp/files.remote
