@@ -396,7 +396,7 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
                     changes["messages"] += 1
                     with msg.frozen():
                         if args.verbose > 0:
-                            print(f"Setting tags {sorted(missing[f["id"]]["tags"])} for {msg.messageid}.")
+                            print(f"Setting tags {sorted(missing[f["id"]]["tags"])} for received {msg.messageid}.")
                         msg.tags.clear()
                         for tag in missing[f["id"]]["tags"]:
                             msg.tags.add(tag)
