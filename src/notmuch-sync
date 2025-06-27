@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import shlex
 import shutil
@@ -17,6 +18,9 @@ from pathlib import Path
 from select import select
 
 import notmuch2
+
+logging.basicConfig(format="[{asctime}] {message}", style="{")
+logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
 
@@ -88,7 +92,7 @@ def get_changes(db, revision, prefix, sync_file):
         ]} for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
-def sync_tags(args, db, changes_mine, changes_theirs):
+def sync_tags(db, changes_mine, changes_theirs):
     """
     Synchronize tags between local and remote changes. Applies tags from all
     remotely changed IDs to local messages with the same ID, overwriting any
@@ -97,7 +101,6 @@ def sync_tags(args, db, changes_mine, changes_theirs):
     synced later).
 
     Args:
-        args: Parsed command-line arguments (should have 'verbose').
         db: An open notmuch2.Database object.
         changes_mine (dict): Local changes, mapping message IDs to tags.
         changes_theirs (dict): Remote changes, mapping message IDs to tags.
@@ -114,8 +117,7 @@ def sync_tags(args, db, changes_mine, changes_theirs):
         try:
             msg = db.find(mid)
             if tags != set(msg.tags):
-                if args.verbose > 0:
-                    print(f"Setting tags {sorted(list(tags))} for {mid}.")
+                logger.info("Setting tags %s for %s.", sorted(list(tags)), mid)
                 with msg.frozen():
                     changes += 1
                     msg.tags.clear()
@@ -130,7 +132,7 @@ def sync_tags(args, db, changes_mine, changes_theirs):
     return changes
 
 
-def initial_sync(args, from_stream, to_stream):
+def initial_sync(from_stream, to_stream):
     """
     Perform the initial synchronization of UUIDs and tag changes, which includes
     applying any remote tag changes to messages that exist locally. UUIDs and
@@ -138,7 +140,6 @@ def initial_sync(args, from_stream, to_stream):
     Writes sync state file at the end.
 
     Args:
-        args: Parsed command-line arguments (should have 'verbose').
         from_stream: Stream to read from the remote.
         to_stream: Stream to write to the remote.
 
@@ -156,15 +157,13 @@ def initial_sync(args, from_stream, to_stream):
         uuids["mine"] = revision.uuid.decode()
 
         async def send_uuid():
-            if args.verbose > 0:
-                print("Sending UUID...")
+            logger.info("Sending UUID...")
             to_stream.write(uuids["mine"].encode("utf-8"))
             transfer["write"] += 36
             to_stream.flush()
 
         async def recv_uuid():
-            if args.verbose > 0:
-                print("Receiving UUID...")
+            logger.info("Receiving UUID...")
             uuids["theirs"] = from_stream.read(36).decode("utf-8")
             transfer["read"] += 36
 
@@ -172,34 +171,28 @@ def initial_sync(args, from_stream, to_stream):
             await asyncio.gather(send_uuid(), recv_uuid())
 
         asyncio.run(sync_uuids())
-        if args.verbose > 0:
-            print("UUIDs synced.")
+        logger.info("UUIDs synced.")
         fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{uuids["theirs"]}")
 
         changes = {}
-        if args.verbose > 0:
-            print("Computing local changes...")
+        logger.info("Computing local changes...")
         changes["mine"] = get_changes(dbw, revision, prefix, fname)
 
         async def send():
-            if args.verbose > 0:
-                print("Sending local changes...")
+            logger.info("Sending local changes...")
             write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
         async def recv():
-            if args.verbose > 0:
-                print("Receiving remote changes...")
+            logger.info("Receiving remote changes...")
             changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
         async def sync():
             await asyncio.gather(send(), recv())
 
         asyncio.run(sync())
-        if args.verbose > 0:
-            print("Changes synced.")
-        tchanges = sync_tags(args, dbw, changes["mine"], changes["theirs"])
-        if args.verbose > 0:
-            print("Tags synced.")
+        logger.info("Changes synced.")
+        tchanges = sync_tags(dbw, changes["mine"], changes["theirs"])
+        logger.info("Tags synced.")
 
         # record last sync here -- this means that later changes (adding files,
         # adding messages, deleting) will show up during the next sync, but we
@@ -209,14 +202,13 @@ def initial_sync(args, from_stream, to_stream):
         # during the next stages, as the DB is no longer locked
         with open(fname, 'w', encoding="utf-8") as f:
             revision = dbw.revision()
-            if args.verbose > 0:
-                print(f"Writing last sync revision {revision.rev}.")
+            logger.info("Writing last sync revision %s.", revision.rev)
             f.write(f"{revision.rev} {revision.uuid.decode()}")
 
     return (prefix, changes["mine"], changes["theirs"], tchanges)
 
 
-def get_missing_files(args, changes_mine, changes_theirs, prefix):
+def get_missing_files(changes_mine, changes_theirs, prefix):
     """
     Determine which files are missing locally compared to the remote, and handle
     file moves/copies based on SHA256 checksums. Delete any files that aren't
@@ -224,7 +216,6 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
     This never deletes a message, only duplicate files for a message.
 
     Args:
-        args: Parsed command-line arguments (should have 'verbose').
         changes_mine (dict): Local changes.
         changes_theirs (dict): Remote changes.
         prefix (str): Prefix path for filenames (notmuch config database.path).
@@ -259,13 +250,11 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
                                 # this is to prevent inconsistencies when
                                 # changes happen on both sides
                                 if matches[0] in changes_theirs[mid]["files"] or mid in changes_mine:
-                                    if args.verbose > 0:
-                                        print(f"Copying {src} to {dst}.")
+                                    logger.info("Copying %s to %s.", src, dst)
                                     shutil.copy(src, dst)
                                     fnames_mine.append(f["name"])
                                 else:
-                                    if args.verbose > 0:
-                                        print(f"Moving {src} to {dst}.")
+                                    logger.info("Moving %s to %s.", src, dst)
                                     shutil.move(src, dst)
                                     fnames_mine.append(f["name"])
                                     fnames_mine.remove(matches[0]["name"])
@@ -273,8 +262,7 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
                                     dbw.add(dst)
                                     # see above comment for local changes check
                                     if matches[0] not in changes_theirs[mid]["files"] and mid not in changes_mine:
-                                        if args.verbose > 0:
-                                            print(f"Removing {src} from DB.")
+                                        logger.info("Removing %s from DB.", src)
                                         dbw.remove(src)
                                 missing_mine.remove(f["name"])
                 # check which ones are still missing
@@ -290,8 +278,7 @@ def get_missing_files(args, changes_mine, changes_theirs, prefix):
                         for f in to_delete:
                             fname = os.path.join(prefix, f)
                             dchanges += 1
-                            if args.verbose > 0:
-                                print(f"Removing {fname} from DB and deleting file.")
+                            logger.info("Removing %s from DB and deleting file.", fname)
                             dbw.remove(fname)
                             Path(fname).unlink()
             except LookupError:
@@ -334,12 +321,11 @@ def recv_file(fname, stream, sha):
         f.write(content)
 
 
-def sync_files(args, prefix, missing, from_stream, to_stream):
+def sync_files(prefix, missing, from_stream, to_stream):
     """
     Synchronize files that are missing locally or remotely.
 
     Args:
-        args: Parsed command-line arguments.
         prefix (str): Prefix path for filenames (notmuch config database.path).
         missing (dict): Mapping of missing files by message ID.
         from_stream: Stream to read file names and files from.
@@ -353,8 +339,7 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
     changes = {"files": len(files["mine"]), "messages": 0}
 
     async def send_fnames():
-        if args.verbose > 0:
-            print("Sending file names missing on local...")
+        logger.info("Sending file names missing on local...")
         to_stream.write(struct.pack("!I", len(files["mine"])))
         transfer["write"] += 4
         to_stream.flush()
@@ -362,8 +347,7 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
             write(f["name"].encode("utf-8"), to_stream)
 
     async def recv_fnames():
-        if args.verbose > 0:
-            print("Receving file names missing on remote...")
+        logger.info("Receving file names missing on remote...")
         size_data = from_stream.read(4)
         transfer["read"] += 4
         nfiles = struct.unpack("!I", size_data)[0]
@@ -373,30 +357,28 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
         await asyncio.gather(send_fnames(), recv_fnames())
 
     asyncio.run(sync_fnames())
-    if args.verbose > 0:
-        print("Missing file names synced.")
+    logger.info("Missing file names synced.")
 
     async def send_files():
         for idx, fname in enumerate(files["theirs"]):
-            if args.verbose > 0:
-                print(f"{idx + 1}/{len(files["theirs"])} Sending {fname}...")
+            logger.info("%s/%s Sending %s...", idx + 1, len(files["theirs"]),
+                        fname)
             send_file(os.path.join(prefix, fname), to_stream)
 
     async def recv_files():
         for idx, f in enumerate(files["mine"]):
-            if args.verbose > 0:
-                print(f"{idx + 1}/{len(files["mine"])} Receiving {f["name"]}...")
+            logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream, f["sha"])
             with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                if args.verbose > 0:
-                    print(f"Adding {dst} to DB.")
+                logger.info("Adding %s to DB.", dst)
                 msg, dup = dbw.add(dst)
                 if not dup:
                     changes["messages"] += 1
                     with msg.frozen():
-                        if args.verbose > 0:
-                            print(f"Setting tags {sorted(missing[f["id"]]["tags"])} for received {msg.messageid}.")
+                        logger.info("Setting tags %s for received %s.",
+                                    sorted(missing[f["id"]]["tags"]),
+                                    msg.messageid)
                         msg.tags.clear()
                         for tag in missing[f["id"]]["tags"]:
                             msg.tags.add(tag)
@@ -405,21 +387,19 @@ def sync_files(args, prefix, missing, from_stream, to_stream):
         await asyncio.gather(send_files(), recv_files())
 
     asyncio.run(sync())
-    if args.verbose > 0:
-        print("Missing files synced.")
+    logger.info("Missing files synced.")
 
     return (changes["messages"], changes["files"])
 
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
 # have local figure out what needs to be deleted on both sides
-def sync_deletes_local(args, from_stream, to_stream):
+def sync_deletes_local(from_stream, to_stream):
     """
     Synchronize deletions for the local database and instruct remote to delete
     messages/files as needed.
 
     Args:
-        args: Parsed command-line arguments.
         from_stream: Stream to read from the remote.
         to_stream: Stream to write to the remote.
 
@@ -431,14 +411,12 @@ def sync_deletes_local(args, from_stream, to_stream):
 
     async def get_ids():
         with notmuch2.Database() as db:
-            if args.verbose > 0:
-                print("Getting all message IDs from DB...")
+            logger.info("Getting all message IDs from DB...")
             msgs = db.messages('*')
             ids["mine"] = [ msg.messageid for msg in msgs ]
 
     async def recv_ids():
-        if args.verbose > 0:
-            print("Receiving all message IDs from remote...")
+        logger.info("Receiving all message IDs from remote...")
         size_data = from_stream.read(4)
         transfer["read"] += 4
         nids = struct.unpack("!I", size_data)[0]
@@ -448,15 +426,12 @@ def sync_deletes_local(args, from_stream, to_stream):
         await asyncio.gather(get_ids(), recv_ids())
 
     asyncio.run(sync_ids())
-    if args.verbose > 0:
-        print("Message IDs synced.")
+    logger.info("Message IDs synced.")
 
     async def send_del_ids():
         to_del_remote = set(ids["theirs"]) - set(ids["mine"])
-        if args.verbose > 1:
-            print(f"Remote IDs to be deleted {to_del_remote}.")
-        if args.verbose > 0:
-            print("Sending message IDs to be deleted to remote...")
+        logger.debug("Remote IDs to be deleted %s.", to_del_remote)
+        logger.info("Sending message IDs to be deleted to remote...")
         to_stream.write(struct.pack("!I", len(to_del_remote)))
         transfer["write"] += 4
         to_stream.flush()
@@ -465,18 +440,15 @@ def sync_deletes_local(args, from_stream, to_stream):
 
     async def del_ids():
         to_del = set(ids["mine"]) - set(ids["theirs"])
-        if args.verbose > 1:
-            print(f"Local IDs to be deleted {to_del}.")
+        logger.debug("Local IDs to be deleted %s.", to_del)
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
             for mid in to_del:
                 dels["a"] += 1
-                if args.verbose > 0:
-                    print(f"Removing {mid} from DB and deleting files.")
+                logger.info("Removing %s from DB and deleting files.", mid)
                 try:
                     msg = dbw.find(mid)
                     for f in msg.filenames():
-                        if args.verbose > 1:
-                            print(f"Removing {f}.")
+                        logger.debug("Removing %s.", f)
                         dbw.remove(f)
                         Path(f).unlink()
                 except LookupError:
@@ -538,9 +510,9 @@ def sync_remote(args):
     Args:
         args: Parsed command-line arguments.
     """
-    prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, sys.stdin.buffer, sys.stdout.buffer)
-    missing, fchanges, dfchanges = get_missing_files(args, changes_mine, changes_theirs, prefix)
-    rmessages, rfiles = sync_files(args, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
+    prefix, changes_mine, changes_theirs, tchanges = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
+    missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix)
+    rmessages, rfiles = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     dchanges = 0
     if args.delete:
         dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
@@ -565,8 +537,7 @@ def sync_local(args):
             rargs.append("--delete")
         cmd = shlex.split(args.ssh_cmd) + rargs
 
-    if args.verbose > 0:
-        print("Connecting to remote...")
+    logger.info("Connecting to remote...")
     with subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
@@ -579,19 +550,16 @@ def sync_local(args):
 
         data = b''
         try:
-            prefix, changes_mine, changes_theirs, tchanges = initial_sync(args, from_remote, to_remote)
-            if args.verbose > 1:
-                print(f"Local changes {changes_mine}, remote changes {changes_theirs}.")
-            missing, fchanges, dfchanges  = get_missing_files(args, changes_mine, changes_theirs, prefix)
-            if args.verbose > 1:
-                print(f"Local missing files {missing}.")
-            rmessages, rfiles = sync_files(args, prefix, missing, from_remote, to_remote)
+            prefix, changes_mine, changes_theirs, tchanges = initial_sync(from_remote, to_remote)
+            logger.debug("Local changes %s, remote changes %s.", changes_mine, changes_theirs)
+            missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix)
+            logger.debug("Local missing files %s.", missing)
+            rmessages, rfiles = sync_files(prefix, missing, from_remote, to_remote)
             dchanges = 0
             if args.delete:
-                dchanges = sync_deletes_local(args, from_remote, to_remote)
+                dchanges = sync_deletes_local(from_remote, to_remote)
 
-            if args.verbose > 0:
-                print("Getting change numbers from remote...")
+            logger.info("Getting change numbers from remote...")
             remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
             transfer["read"] += 6 * 4
         finally:
@@ -606,10 +574,9 @@ def sync_local(args):
         from_remote.close()
         err_remote.close()
 
-    if not args.quiet:
-        print(f"local:\t{rmessages} new messages,\t{rfiles} new files,\t{fchanges} files copied/moved,\t{dfchanges} files deleted,\t{tchanges} messages with tag changes,\t{dchanges} messages deleted")
-        print(f"remote:\t{remote_changes[3]} new messages,\t{remote_changes[5]} new files,\t{remote_changes[1]} files copied/moved,\t{remote_changes[2]} files deleted,\t{remote_changes[0]} messages with tag changes,\t{remote_changes[4]} messages deleted")
-        print(f"{transfer["read"]}/{transfer["write"]} bytes received from/sent to remote.")
+    logger.warning("local:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
+    logger.warning("remote:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
+    logger.warning("%s/%s bytes received from/sent to remote.", transfer["read"], transfer["write"])
 
     if len(data) > 0:
         # error output from remote
@@ -625,7 +592,7 @@ def main():
     parser.add_argument("-r", "--remote", type=str, help="remote host to connect to")
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="increases verbosity, up to twice (ignored on remote)")
-    parser.add_argument("-q", "--quiet", action="store_true", help="do not print summary")
+    parser.add_argument("-q", "--quiet", action="store_true", help="do not print any output, overrides --verbose")
     parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use")
     parser.add_argument("-m", "--mbsync", action="store_true", help="sync mbsync files (.mbsyncstate, .uidvalidity)")
     parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="path to notmuch-sync on remote server")
@@ -634,9 +601,18 @@ def main():
     args = parser.parse_args()
 
     if args.remote or args.remote_cmd:
+        if args.verbose == 1:
+            logger.setLevel(level=logging.INFO)
+        elif args.verbose == 2:
+            logger.setLevel(level=logging.DEBUG)
+        else:
+            logger.setLevel(level=logging.WARNING)
+
+        if args.quiet:
+            logger.disabled = True
         sync_local(args)
     else:
-        args.verbose = 0
+        logger.disabled = True
         sync_remote(args)
 
 
