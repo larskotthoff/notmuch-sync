@@ -119,13 +119,13 @@ jobs:
         sudo -u synctest notmuch new
         if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-        if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none` | wc -l` != "X0" ]; then exit 1; fi
-        if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none` | wc -l` != "X1" ]; then exit 1; fi
+        if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+        if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
         if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-        if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none` | wc -l` != "X1" ]; then exit 1; fi
-        if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none` | wc -l` != "X1" ]; then exit 1; fi
+        if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+        if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         notmuch dump | sort > /tmp/dump.local
         sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
