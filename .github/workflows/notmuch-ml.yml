@@ -93,6 +93,7 @@ jobs:
     - run: |
         cp /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
         notmuch new
+        notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none
         sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
         sudo -u synctest notmuch new
         time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
