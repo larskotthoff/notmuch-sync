@@ -315,8 +315,11 @@ def recv_file(fname, stream, sha):
         sha (str): Expected SHA256 checksum.
 
     Raises:
-        ValueError: If received file's checksum does not match expected.
+        ValueError: If file to receive already exists or received file's
+        checksum does not match expected.
     """
+    if Path(fname).exists():
+        raise ValueError(f"Set to receive '{fname}', but already exists!")
     content = read(stream)
     sha_mine = hashlib.new("sha256", content).hexdigest()
     if sha_mine != sha:

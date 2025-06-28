@@ -765,6 +765,20 @@ def test_recv_file():
         assert b"mail one\nmail\n" == args[0]
 
 
+def test_recv_file_exists():
+    fname = "foo"
+    with patch("builtins.open", mock_open()) as o:
+        with patch("pathlib.Path.exists") as pe:
+            pe.return_value = True
+            stream = io.BytesIO(b"\x00\x00\x00\x0email one\nmail\n")
+            with pytest.raises(ValueError) as pwe:
+                ns.recv_file("foo", stream, "3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3")
+            assert pwe.type == ValueError
+            assert str(pwe.value) == "Set to receive 'foo', but already exists!"
+            assert pe.call_count == 1
+            assert o.call_count == 0
+
+
 def test_recv_file_checksum():
     fname = "foo"
     with patch("builtins.open", mock_open()) as o:
