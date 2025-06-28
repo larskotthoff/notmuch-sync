@@ -139,24 +139,36 @@ def test_initial_sync():
     fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-00000000-0000-0000-0000-000000000001")
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch.object(ns, "get_changes", return_value=[]) as gc:
-            with patch("builtins.open", mock_open()) as o:
-                istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
-                ostream = io.BytesIO()
-                prefix, mine, theirs, nchanges = ns.initial_sync(istream, ostream)
-                assert mine == []
-                assert theirs == []
-                assert nchanges == 0
-                assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
+            istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
+            ostream = io.BytesIO()
+            prefix, mine, theirs, nchanges, syncname, rev = ns.initial_sync(istream, ostream)
+            assert mine == []
+            assert theirs == []
+            assert nchanges == 0
+            assert syncname == fname
+            assert rev.rev == 123
+            assert rev.uuid == b"00000000-0000-0000-0000-000000000000"
+            assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
 
-                o.assert_called_once_with(fname, "w", encoding="utf-8")
-                hdl = o()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert "123 00000000-0000-0000-0000-000000000000" == args[0]
             gc.assert_called_once_with(db, rev, prefix, fname)
 
     assert db.revision.call_count == 2
     db.default_path.assert_called_once()
+
+
+def test_record_sync():
+    rev = lambda: None
+    rev.rev = 123
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
+
+    fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-00000000-0000-0000-0000-000000000001")
+    with patch("builtins.open", mock_open()) as o:
+        ns.record_sync(fname, rev)
+        o.assert_called_once_with(fname, "w", encoding="utf-8")
+        hdl = o()
+        hdl.write.assert_called_once()
+        args = hdl.write.call_args.args
+        assert "123 00000000-0000-0000-0000-000000000000" == args[0]
 
 
 def test_sync_tags_empty():

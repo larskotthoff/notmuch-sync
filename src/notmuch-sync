@@ -134,12 +134,24 @@ def sync_tags(db, changes_mine, changes_theirs):
     return changes
 
 
+def record_sync(fname, revision):
+    """
+    Record last sync revision.
+
+    Args:
+        fname: File to write to.
+        revision: Revision/UUID to record.
+    """
+    with open(fname, 'w', encoding="utf-8") as f:
+        logger.info("Writing last sync revision %s.", revision.rev)
+        f.write(f"{revision.rev} {revision.uuid.decode()}")
+
+
 def initial_sync(from_stream, to_stream):
     """
     Perform the initial synchronization of UUIDs and tag changes, which includes
     applying any remote tag changes to messages that exist locally. UUIDs and
     changes are communicated to/from the remote over the respective streams.
-    Writes sync state file at the end.
 
     Args:
         from_stream: Stream to read from the remote.
@@ -147,7 +159,7 @@ def initial_sync(from_stream, to_stream):
 
     Returns:
         tuple: (prefix, local changes dict, remote changes dict, number of local
-                tag changes)
+                tag changes, name of sync file, DB revision after initial sync)
     """
     # only do tag sync initially to avoid locking db during lengthy file transfers
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
@@ -196,18 +208,9 @@ def initial_sync(from_stream, to_stream):
         tchanges = sync_tags(dbw, changes["mine"], changes["theirs"])
         logger.info("Tags synced.")
 
-        # record last sync here -- this means that later changes (adding files,
-        # adding messages, deleting) will show up during the next sync, but we
-        # check whether there are any actual changes, so they shouldn't result
-        # in a cascading torrent
-        # if we don't record the last sync here, we might miss external changes
-        # during the next stages, as the DB is no longer locked
-        with open(fname, 'w', encoding="utf-8") as f:
-            revision = dbw.revision()
-            logger.info("Writing last sync revision %s.", revision.rev)
-            f.write(f"{revision.rev} {revision.uuid.decode()}")
+        revision = dbw.revision()
 
-    return (prefix, changes["mine"], changes["theirs"], tchanges)
+    return (prefix, changes["mine"], changes["theirs"], tchanges, fname, revision)
 
 
 def get_missing_files(changes_mine, changes_theirs, prefix):
@@ -522,9 +525,16 @@ def sync_remote(args):
     Args:
         args: Parsed command-line arguments.
     """
-    prefix, changes_mine, changes_theirs, tchanges = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
+    prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
     missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix)
     rmessages, rfiles = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
+    # record previous sync version after transferring files -- if something goes
+    # wrong while transferring files, we'd miss any new files during the next
+    # sync otherwise
+    # this will result in some changes (e.g. added files) being picked up in the
+    # sync again, but we check whether actual changes have been made
+    record_sync(sync_fname, rev)
+
     dchanges = 0
     if args.delete:
         dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
@@ -562,11 +572,18 @@ def sync_local(args):
 
         data = b''
         try:
-            prefix, changes_mine, changes_theirs, tchanges = initial_sync(from_remote, to_remote)
+            prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(from_remote, to_remote)
             logger.debug("Local changes %s, remote changes %s.", changes_mine, changes_theirs)
             missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix)
             logger.debug("Local missing files %s.", missing)
             rmessages, rfiles = sync_files(prefix, missing, from_remote, to_remote)
+            # record previous sync version after transferring files -- if something goes
+            # wrong while transferring files, we'd miss any new files during the next
+            # sync otherwise
+            # this will result in some changes (e.g. added files) being picked up in the
+            # sync again, but we check whether actual changes have been made
+            record_sync(sync_fname, rev)
+
             dchanges = 0
             if args.delete:
                 dchanges = sync_deletes_local(from_remote, to_remote)

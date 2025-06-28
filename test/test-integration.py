@@ -193,15 +193,15 @@ def test_sync_tags_files_verbose(shell):
             assert any("Setting tags ['local', 'remote'] for 87d1dajhgf.fsf@example.net." in o for o in out)
             assert any("Setting tags ['attachment', 'local', 'remote'] for 20111101080303.30A10409E@asxas.net." in o for o in out)
             assert 'Tags synced.' in out[10]
-            assert 'Writing last sync revision 9.' in out[11]
             assert any('Sending file names missing on local...' in o for o in out)
             assert any('Receving file names missing on remote...' in o for o in out)
-            assert 'Missing file names synced.' in out[14]
+            assert 'Missing file names synced.' in out[13]
             assert any('1/1 Sending mails/simple.eml...' in o for o in out)
             assert any('1/1 Receiving mails/attachment.eml...' in o for o in out)
             assert any(f'Adding {local}/mails/attachment.eml to DB.' in o for o in out)
             assert any("Setting tags ['attachment', 'remote'] for received 874llc2bkp.fsf@curie.anarc.at." in o for o in out)
-            assert 'Missing files synced.' in out[19]
+            assert 'Missing files synced.' in out[18]
+            assert 'Writing last sync revision 9.' in out[19]
             assert 'Getting change numbers from remote...' in out[20]
             assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[21]
             assert 'remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[22]
