@@ -170,6 +170,7 @@ def test_sync_tags_only_theirs():
     m.frozen = MagicMock()
     m.frozen.__enter__.return_value = None
     m.frozen.__exit__.return_value = False
+    m.ghost = False
 
     mt = MagicMock(spec=list)
     tags = ["foo", "bar"]
@@ -194,6 +195,19 @@ def test_sync_tags_only_theirs():
         call("foobar")
     ]
     mt.to_maildir_flags.assert_called_once()
+
+
+def test_sync_tags_only_theirs_ghost():
+    m = MagicMock()
+    m.ghost = True
+
+    db = lambda: None
+    db.find = MagicMock(return_value=m)
+
+    changes = ns.sync_tags(db, {}, {"foo": {"tags": ["bar", "foobar"]}})
+    assert changes == 0
+
+    db.find.assert_called_once_with("foo")
 
 
 def test_sync_tags_only_theirs_no_changes():
@@ -236,6 +250,7 @@ def test_sync_tags_mine_theirs_no_overlap():
     m.frozen = MagicMock()
     m.frozen.__enter__.return_value = None
     m.frozen.__exit__.return_value = False
+    m.ghost = False
 
     mt = MagicMock(spec=list)
     tags = ["foo", "bar"]
@@ -267,6 +282,7 @@ def test_sync_tags_mine_theirs_overlap():
     m.frozen = MagicMock()
     m.frozen.__enter__.return_value = None
     m.frozen.__exit__.return_value = False
+    m.ghost = False
 
     mt = MagicMock(spec=list)
     tags = ["foo", "bar"]
@@ -343,6 +359,7 @@ def test_missing_files_empty():
 def test_missing_files_new():
     m = MagicMock()
     m.filenames = MagicMock(return_value=[os.path.join(gettempdir(), "bar")])
+    m.ghost = False
     db = lambda: None
 
     def effect(*args, **kwargs):
@@ -368,8 +385,29 @@ def test_missing_files_new():
     assert db.find.mock_calls == [call('foo'), call('bar')]
 
 
+def test_missing_files_ghost():
+    m = MagicMock()
+    m.ghost = True
+    db = lambda: None
+
+    db.find = MagicMock(return_value=m)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    changes = {"bar": {"tags": ["bar"], "files": [{"name": "foo", "sha": "def"}]}}
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        exp = {"bar": {"tags": ["bar"],
+                       "files": [{"name": "foo", "sha": "def"}]}}
+        assert (exp, 0, 0) == ns.get_missing_files({}, changes, prefix)
+        assert db.find.mock_calls == [ call("bar") ]
+
+
 def test_missing_files_inconsistent():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -407,6 +445,7 @@ def test_missing_files_inconsistent():
 
 def test_missing_files_moved():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -439,6 +478,7 @@ def test_missing_files_moved():
 
 def test_missing_files_copied():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -473,6 +513,7 @@ def test_missing_files_copied():
 
 def test_missing_files_added():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -505,6 +546,7 @@ def test_missing_files_added():
 
 def test_missing_files_delete():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -540,6 +582,7 @@ def test_missing_files_delete():
 
 def test_missing_files_delete_changed():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -578,6 +621,7 @@ def test_missing_files_delete_changed():
 
 def test_missing_files_copy_delete():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -621,6 +665,7 @@ def test_missing_files_copy_delete():
 
 def test_missing_files_delete_inconsistent():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -660,6 +705,7 @@ def test_missing_files_delete_inconsistent():
 
 def test_missing_files_delete_mismatch():
     m = MagicMock()
+    m.ghost = False
     db = lambda: None
 
     db.find = MagicMock(return_value=m)
@@ -912,6 +958,7 @@ def test_sync_deletes_local():
     m2 = lambda: None
     m2.messageid = "bar"
     m2.filenames = MagicMock(return_value=["barfile"])
+    m2.ghost = False
 
     db = lambda: None
     db.messages = MagicMock(return_value=[m1, m2])
@@ -933,6 +980,39 @@ def test_sync_deletes_local():
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
     m2.filenames.assert_called_once()
+
+    out = ostream.getvalue()
+    assert b"\x00\x00\x00\x00" == out
+
+
+def test_sync_deletes_local_ghost():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    m2.ghost = True
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            ostream = io.BytesIO()
+            assert 1 == ns.sync_deletes_local(istream, ostream)
+            assert pu.call_count == 0
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    assert db.remove.call_count == 0
+    assert m2.filenames.call_count == 0
 
     out = ostream.getvalue()
     assert b"\x00\x00\x00\x00" == out
@@ -972,6 +1052,7 @@ def test_sync_deletes_remote():
     m2 = lambda: None
     m2.messageid = "bar"
     m2.filenames = MagicMock(return_value=["barfile"])
+    m2.ghost = False
 
     db = lambda: None
     db.messages = MagicMock(return_value=[m1, m2])
@@ -993,6 +1074,39 @@ def test_sync_deletes_remote():
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
     m2.filenames.assert_called_once()
+
+    out = ostream.getvalue()
+    assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+
+
+def test_sync_deletes_remote_ghost():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    m2.ghost = True
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            ostream = io.BytesIO()
+            assert 1 == ns.sync_deletes_remote(istream, ostream)
+            assert pu.call_count == 0
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    assert db.remove.call_count == 0
+    assert m2.filenames.call_count == 0
 
     out = ostream.getvalue()
     assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out

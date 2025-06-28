@@ -117,7 +117,7 @@ def sync_tags(db, changes_mine, changes_theirs):
         try:
             msg = db.find(mid)
             if msg.ghost:
-                pass
+                continue
             if tags != set(msg.tags):
                 logger.info("Setting tags %s for %s.", sorted(list(tags)), mid)
                 with msg.frozen():
@@ -235,7 +235,7 @@ def get_missing_files(changes_mine, changes_theirs, prefix):
                 msg = db.find(mid)
                 if msg.ghost:
                     ret[mid] = changes_theirs[mid]
-                    pass
+                    continue
                 fnames_theirs = [ f["name"] for f in changes_theirs[mid]["files"] ]
                 fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
                 missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
@@ -453,7 +453,7 @@ def sync_deletes_local(from_stream, to_stream):
                 try:
                     msg = dbw.find(mid)
                     if msg.ghost:
-                        pass
+                        continue
                     for f in msg.filenames():
                         logger.debug("Removing %s.", f)
                         dbw.remove(f)
@@ -502,7 +502,7 @@ def sync_deletes_remote(from_stream, to_stream):
             try:
                 msg = dbw.find(mid)
                 if msg.ghost:
-                    pass
+                    continue
                 for f in msg.filenames():
                     dbw.remove(f)
                     Path(f).unlink()
