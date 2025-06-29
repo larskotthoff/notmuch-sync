@@ -141,6 +141,7 @@ jobs:
         # same again, but kill process to check that it works when interrupted
         mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
         notmuch new
+        sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
         sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
         sudo -u synctest notmuch new
         time notmuch-sync --delete --verbose --remote localhost --user synctest
