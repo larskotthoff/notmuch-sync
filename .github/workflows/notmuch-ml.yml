@@ -39,18 +39,19 @@ jobs:
         mkdir ~/.ssh
         chmod 700 ~/.ssh
         ssh-keygen -N "" -f ~/.ssh/test
-
-    - run: |
+        echo -e "Host localhost\n IdentityFile ~/.ssh/test\n StrictHostKeyChecking no" > ~/.ssh/config
         sudo -u synctest mkdir /home/synctest/.ssh
         sudo -u synctest chmod 700 /home/synctest/.ssh
         sudo cp ~/.ssh/test.pub /home/synctest/.ssh/authorized_keys
+        sudo cp ~/.ssh/config /home/synctest/.ssh/config
         sudo chown synctest /home/synctest/.ssh/authorized_keys
+        sudo chown synctest /home/synctest/.ssh/config
         sudo chmod 600 /home/synctest/.ssh/authorized_keys
         sudo service ssh start
 
     - run: |
         # initial sync
-        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        time notmuch-sync --delete --verbose --remote localhost --user synctest
         notmuch dump | sort > /tmp/dump.local
         sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
@@ -67,7 +68,7 @@ jobs:
         notmuch tag +foo id:1517843248.cvlu0mp4mk.astroid@strange.none
         if [ X`notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | tr -d '\n'` != "Xfooquestion" ]; then exit 1; fi
         sudo -u synctest notmuch search --output=tags id:1517843248.cvlu0mp4mk.astroid@strange.none | grep -vq foo
-        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        time notmuch-sync --delete --verbose --remote localhost --user synctest
         notmuch dump | sort > /tmp/dump.local
         sudo -u synctest notmuch dump | sort > /tmp/dump.remote
         diff -u /tmp/dump.local /tmp/dump.remote
@@ -78,7 +79,7 @@ jobs:
         notmuch new
         if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-        time notmuch-sync --delete --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        time notmuch-sync --delete --verbose --remote localhost --user synctest
         if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         notmuch dump | sort > /tmp/dump.local
@@ -98,7 +99,7 @@ jobs:
         sudo -u synctest notmuch new
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         notmuch dump | sort > /tmp/dump.local
@@ -121,7 +122,7 @@ jobs:
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest --ssh-cmd "ssh -i ~/.ssh/test -CTaxq -o StrictHostKeyChecking=no"
+        time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
         if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
         if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
