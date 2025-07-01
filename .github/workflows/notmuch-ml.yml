@@ -149,11 +149,7 @@ jobs:
     - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
     - run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
-    - run: |
-        stdbuf -e0 notmuch-sync --delete --verbose --verbose --remote localhost --user synctest 2>&1 | while read line; do
-            echo "$line"
-            echo "$line" | grep -q "Tags synced." && sudo killall -9 python3
-        done || exit 0
+    - run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Tags synced.\" { close }"
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
     - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
