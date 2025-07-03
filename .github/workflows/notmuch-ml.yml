@@ -191,6 +191,8 @@ jobs:
     - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
     - run: notmuch new
     - run: mv $GITHUB_WORKSPACE/notmuch-list/temp1.mail $GITHUB_WORKSPACE/notmuch-list/2018-02/
+    - run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
+    - run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
     - run: |
         set +e
         time notmuch-sync --delete --verbose --remote localhost --user synctest
@@ -200,5 +202,7 @@ jobs:
         else
           exit 0
         fi
+    - run: diff `ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*)`
+    - run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
     - run: notmuch new
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
