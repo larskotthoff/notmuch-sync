@@ -170,3 +170,25 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
+
+    # no `notmuch new` after moving file there -- file already there, same checksum as copied
+    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: notmuch new
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
+    - run: notmuch new
+    - run: sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+
+    # no `notmuch new` after moving file away -- should error
+    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: notmuch new
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
+    - run: notmuch new
+    - run: mv $GITHUB_WORKSPACE/notmuch-list/ $GITHUB_WORKSPACE/notmuch-list/2009-02/
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest && exit 1
