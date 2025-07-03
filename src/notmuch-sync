@@ -307,7 +307,7 @@ def send_file(fname, stream):
         write(f.read(), stream)
 
 
-def recv_file(fname, stream, sha):
+def recv_file(fname, stream, sha=None, overwrite_raise=True):
     """
     Receive a file with a 4-byte length prefix from a stream and write it to
     disk, validating its checksum.
@@ -316,16 +316,19 @@ def recv_file(fname, stream, sha):
         fname (str): Destination file path.
         stream: Readable stream.
         sha (str): Expected SHA256 checksum.
+        overwrite_raise: Raise error if existing file would be overwritten.
 
     Raises:
         ValueError: If file to receive already exists or received file's
         checksum does not match expected.
     """
-    if Path(fname).exists():
-        raise ValueError(f"Set to receive '{fname}', but already exists!")
     content = read(stream)
     sha_mine = hashlib.new("sha256", content).hexdigest()
-    if sha_mine != sha:
+    if Path(fname).exists() and overwrite_raise:
+        sha_exists = hashlib.new("sha256", Path(fname).read_bytes()).hexdigest()
+        if sha_exists != sha_mine:
+            raise ValueError(f"Set to receive '{fname}', but already exists with different content!")
+    if sha and sha_mine != sha:
         raise ValueError(f"Checksum of received file '{fname}' ({sha_mine}) does not match expected ({sha})!")
     Path(fname).parent.mkdir(parents=True, exist_ok=True)
     with open(fname, "wb") as f:
@@ -518,6 +521,99 @@ def sync_deletes_remote(from_stream, to_stream):
     return dels
 
 
+def sync_mbsync_local(prefix, from_stream, to_stream):
+    """
+    Synchronize local mbsync files with remote.
+
+    Args:
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+        from_stream: Stream to read from the remote.
+        to_stream: Stream to write to the remote.
+    """
+    mbsync = {}
+
+    async def get_mbsync():
+        logger.info("Getting local mbsync file stats...")
+        mbsync["mine"] = { str(f).removeprefix(prefix): f.stat().st_mtime
+                           for pat in [".uidvalidity", ".mbsyncstate"]
+                           for f in Path(prefix).rglob(pat) }
+
+    async def recv_mbsync():
+        logger.info("Receiving mbsync file stats from remote...")
+        mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+
+    async def sync_mbsync():
+        await asyncio.gather(get_mbsync(), recv_mbsync())
+
+    asyncio.run(sync_mbsync())
+    logger.info("mbsync file stats synced.")
+
+    pull = [ f for f in mbsync["mine"].keys()
+            if (f in mbsync["theirs"] and mbsync["theirs"][f] > mbsync["mine"][f]) ]
+    pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
+    logger.debug("Local mbsync files to be updated from remote %s.", pull)
+    logger.info("Sending list of requested mbsync files to remote...")
+    write(json.dumps(pull).encode("utf-8"), to_stream)
+
+    async def send_mbsync_files():
+        push = [ f for f in mbsync["theirs"].keys()
+                if (f in mbsync["mine"] and mbsync["mine"][f] > mbsync["theirs"][f]) ]
+        push += list(set(mbsync["mine"].keys()) - set(mbsync["theirs"].keys()))
+
+        logger.debug("mbsync files to update on remote %s.", push)
+        logger.info("Sending mbsync files to remote...")
+        write(json.dumps(push).encode("utf-8"), to_stream)
+        for idx, f in enumerate(push):
+            logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
+                         len(push), f)
+            send_file(os.path.join(prefix, f), to_stream)
+
+    async def recv_mbsync_files():
+        for idx, f in enumerate(pull):
+            logger.debug("%s/%s Receiving mbsync file %s from remote...",
+                         idx + 1, len(pull), f)
+            recv_file(os.path.join(prefix, f), from_stream,
+                      overwrite_raise=False)
+
+    async def sync_mbsync_files():
+        await asyncio.gather(send_mbsync_files(), recv_mbsync_files())
+
+    asyncio.run(sync_mbsync_files())
+    logger.info("mbsync files synced.")
+
+
+def sync_mbsync_remote(prefix, from_stream, to_stream):
+    """
+    Synchronize remote mbsync files with local.
+
+    Args:
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+        from_stream: Stream to read from the remote.
+        to_stream: Stream to write to the remote.
+    """
+    mbsync = { str(f).removeprefix(prefix): f.stat().st_mtime
+               for pat in [".uidvalidity", ".mbsyncstate"]
+               for f in Path(prefix).rglob(pat) }
+    write(json.dumps(mbsync).encode("utf-8"), to_stream)
+
+    push = json.loads(read(from_stream).decode("utf-8"))
+
+    async def send_mbsync_files():
+        for f in push:
+            send_file(os.path.join(prefix, f), to_stream)
+
+    async def recv_mbsync_files():
+        pull = json.loads(read(from_stream).decode("utf-8"))
+        for f in pull:
+            recv_file(os.path.join(prefix, f), from_stream,
+                      overwrite_raise=False)
+
+    async def sync_mbsync_files():
+        await asyncio.gather(send_mbsync_files(), recv_mbsync_files())
+
+    asyncio.run(sync_mbsync_files())
+
+
 def sync_remote(args):
     """
     Run synchronization in remote mode.
@@ -538,6 +634,8 @@ def sync_remote(args):
     dchanges = 0
     if args.delete:
         dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
+    if args.mbsync:
+        sync_mbsync_remote(prefix, sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
                                         rmessages, dchanges, rfiles))
     sys.stdout.buffer.flush()
@@ -557,6 +655,8 @@ def sync_local(args):
         rargs = [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path}"]
         if args.delete:
             rargs.append("--delete")
+        if args.mbsync:
+            rargs.append("--mbsync")
         cmd = shlex.split(args.ssh_cmd) + rargs
 
     logger.info("Connecting to remote...")
@@ -587,6 +687,8 @@ def sync_local(args):
             dchanges = 0
             if args.delete:
                 dchanges = sync_deletes_local(from_remote, to_remote)
+            if args.mbsync:
+                sync_mbsync_local(prefix, from_remote, to_remote)
 
             logger.info("Getting change numbers from remote...")
             remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))

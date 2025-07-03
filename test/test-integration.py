@@ -3,6 +3,7 @@ import os
 import socket
 import re
 import shutil
+import time
 from pathlib import Path
 
 from tempfile import TemporaryDirectory
@@ -14,12 +15,14 @@ def write_conf(path):
     return conf_path
 
 
-def sync(shell, local_conf, remote_conf, verbose=False, delete=False):
-    args = ["./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync {"--delete" if delete else ""}'"]
+def sync(shell, local_conf, remote_conf, verbose=False, delete=False, mbsync=False):
+    args = ["./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync {"--delete" if delete else ""} {"--mbsync" if mbsync else ""}'"]
     if verbose:
         args.append("--verbose")
     if delete:
         args.append("--delete")
+    if mbsync:
+        args.append("--mbsync")
     res = shell.run(*args, env={"NOTMUCH_CONFIG": local_conf})
     #print(res)
     assert res.returncode == 0
@@ -965,3 +968,65 @@ def test_sync_message_deleted_multiple_and_back(shell):
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
             assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
             assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+
+
+def test_sync_mbsync(shell):
+    with TemporaryDirectory() as local:
+        with TemporaryDirectory() as remote:
+            assert shell.run("cp", "-r", "test/mails", local).returncode == 0
+            assert shell.run("cp", "-r", "test/mails", remote).returncode == 0
+            local_conf = write_conf(local)
+            remote_conf = write_conf(remote)
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
+            assert shell.run("notmuch", "new", env={"NOTMUCH_CONFIG": remote_conf}).returncode == 0
+
+            local_mbsyncstate = os.path.join(local, "mails", ".mbsyncstate")
+            local_uidvalidity = os.path.join(local, "mails", ".uidvalidity")
+            remote_mbsyncstate = os.path.join(remote, "mails", ".mbsyncstate")
+            remote_uidvalidity = os.path.join(remote, "mails", ".uidvalidity")
+            with open(local_mbsyncstate, "w", encoding="utf-8") as f:
+                f.write("a")
+            with open(local_uidvalidity, "w", encoding="utf-8") as f:
+                f.write("b")
+            assert not Path(remote_mbsyncstate).exists()
+            assert not Path(remote_uidvalidity).exists()
+
+            out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+
+            assert Path(remote_mbsyncstate).exists()
+            assert Path(remote_uidvalidity).exists()
+            with open(remote_mbsyncstate, "r", encoding="utf-8") as f:
+                assert f.read() == "a"
+            with open(remote_uidvalidity, "r", encoding="utf-8") as f:
+                assert f.read() == "b"
+
+            with open(remote_uidvalidity, "w", encoding="utf-8") as f:
+                f.write("c")
+            with open(local_uidvalidity, "r", encoding="utf-8") as f:
+                assert f.read() == "b"
+
+            out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+
+            with open(local_uidvalidity, "r", encoding="utf-8") as f:
+                assert f.read() == "c"
+            with open(remote_uidvalidity, "r", encoding="utf-8") as f:
+                assert f.read() == "c"
+
+            with open(remote_mbsyncstate, "w", encoding="utf-8") as f:
+                f.write("d")
+            time.sleep(0.1)
+            with open(local_mbsyncstate, "w", encoding="utf-8") as f:
+                f.write("e")
+
+            out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
+            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+
+            with open(local_mbsyncstate, "r", encoding="utf-8") as f:
+                assert f.read() == "e"
+            with open(remote_mbsyncstate, "r", encoding="utf-8") as f:
+                assert f.read() == "e"
