@@ -190,5 +190,5 @@ jobs:
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
     - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
     - run: notmuch new
-    - run: mv $GITHUB_WORKSPACE/notmuch-list/temp1.mail $GITHUB_WORKSPACE/notmuch-list/2009-02/
+    - run: mv $GITHUB_WORKSPACE/notmuch-list/temp1.mail $GITHUB_WORKSPACE/notmuch-list/2018-02/
     - run: ! time notmuch-sync --delete --verbose --remote localhost --user synctest
