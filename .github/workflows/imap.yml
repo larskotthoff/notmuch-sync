@@ -75,9 +75,6 @@ jobs:
         auth_debug = yes
         auth_verbose = yes
         EOF
-        
-        # Start Dovecot
-        sudo systemctl start dovecot
     
     - name: Seed initial emails
       run: |
@@ -113,39 +110,10 @@ jobs:
 
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-        
-    - name: Set up notmuch and other user
-      run: |
-        echo -e "[database]\npath=$GITHUB_WORKSPACE/mail\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
-        mkdir $GITHUB_WORKSPACE/mail
-        notmuch new
-        notmuch tag +one subject:1
-        notmuch tag +two subject:2
-        notmuch tag +three subject:3
-        sudo adduser --disabled-password --gecos "synctest" synctest
-        echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
-        sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
-        sudo -u synctest mkdir /home/synctest/mail
-        sudo -u synctest notmuch new
+        sudo systemctl start dovecot
 
-    - name: Set up SSH
-      run: |
-        mkdir ~/.ssh
-        chmod 700 ~/.ssh
-        ssh-keygen -N "" -f ~/.ssh/test
-        echo -e "Host localhost\n IdentityFile ~/.ssh/test\n StrictHostKeyChecking no" > ~/.ssh/config
-        sudo -u synctest mkdir /home/synctest/.ssh
-        sudo -u synctest chmod 700 /home/synctest/.ssh
-        sudo cp ~/.ssh/test.pub /home/synctest/.ssh/authorized_keys
-        sudo cp ~/.ssh/config /home/synctest/.ssh/config
-        sudo chown synctest /home/synctest/.ssh/authorized_keys
-        sudo chown synctest /home/synctest/.ssh/config
-        sudo chmod 600 /home/synctest/.ssh/authorized_keys
-        sudo service ssh start
-    
     - name: Configure mbsync user runner
       run: |
-        # Create mbsync config
         mkdir -p ~/.config/mbsync
         tee ~/.config/mbsync/config > /dev/null <<EOF
         IMAPAccount testaccount
@@ -165,8 +133,8 @@ jobs:
         SubFolders Verbatim
         
         Channel testaccount
-        Master :testaccount-remote:
-        Slave :testaccount-local:
+        Far :testaccount-remote:
+        Near :testaccount-local:
         Patterns *
         Create Both
         SyncState *
@@ -176,7 +144,7 @@ jobs:
     
     - name: Configure mbsync user synctest
       run: |
-        # Create mbsync config
+        sudo adduser --disabled-password --gecos "synctest" synctest
         sudo -u synctest mkdir -p /home/synctest/.config/mbsync
         sudo -u synctest tee /home/synctest/.config/mbsync/config > /dev/null <<EOF
         IMAPAccount testaccount
@@ -196,8 +164,8 @@ jobs:
         SubFolders Verbatim
         
         Channel testaccount
-        Master :testaccount-remote:
-        Slave :testaccount-local:
+        Far :testaccount-remote:
+        Near :testaccount-local:
         Patterns *
         Create Both
         SyncState *
@@ -207,6 +175,34 @@ jobs:
       run: |
         echo "Running initial mbsync..."
         mbsync -V -a -c ~/.config/mbsync/config
+    
+    - name: Set up notmuch etc
+      run: |
+        echo -e "[database]\npath=$GITHUB_WORKSPACE/mail\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
+        mkdir $GITHUB_WORKSPACE/mail
+        notmuch new
+        notmuch tag +one subject:1
+        notmuch tag +two subject:2
+        notmuch tag +three subject:3
+        echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
+        sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
+        sudo -u synctest mkdir /home/synctest/mail
+        sudo -u synctest notmuch new
+
+    - name: Set up SSH
+      run: |
+        mkdir ~/.ssh
+        chmod 700 ~/.ssh
+        ssh-keygen -N "" -f ~/.ssh/test
+        echo -e "Host localhost\n IdentityFile ~/.ssh/test\n StrictHostKeyChecking no" > ~/.ssh/config
+        sudo -u synctest mkdir /home/synctest/.ssh
+        sudo -u synctest chmod 700 /home/synctest/.ssh
+        sudo cp ~/.ssh/test.pub /home/synctest/.ssh/authorized_keys
+        sudo cp ~/.ssh/config /home/synctest/.ssh/config
+        sudo chown synctest /home/synctest/.ssh/authorized_keys
+        sudo chown synctest /home/synctest/.ssh/config
+        sudo chmod 600 /home/synctest/.ssh/authorized_keys
+        sudo service ssh start
     
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
     - run: notmuch dump | sort > /tmp/dump.local
