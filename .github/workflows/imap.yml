@@ -145,7 +145,7 @@ jobs:
         sudo chmod 600 /home/synctest/.ssh/authorized_keys
         sudo service ssh start
     
-    - name: Configure mbsync user 1
+    - name: Configure mbsync user runner
       run: |
         # Create mbsync config
         mkdir -p ~/.config/mbsync
@@ -177,8 +177,8 @@ jobs:
     - name: Configure mbsync user synctest
       run: |
         # Create mbsync config
-        sudo -u synctest mkdir -p ~/.config/mbsync
-        sudo -u synctest tee ~/.config/mbsync/config > /dev/null <<EOF
+        sudo -u synctest mkdir -p /home/synctest/.config/mbsync
+        sudo -u synctest tee /home/synctest/.config/mbsync/config > /dev/null <<EOF
         IMAPAccount testaccount
         Host 127.0.0.1
         Port 143
