@@ -179,7 +179,6 @@ jobs:
     - name: Set up notmuch etc
       run: |
         echo -e "[database]\npath=$GITHUB_WORKSPACE/mail\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
-        mkdir $GITHUB_WORKSPACE/mail
         notmuch new
         notmuch tag +one subject:1
         notmuch tag +two subject:2
