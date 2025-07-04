@@ -24,7 +24,6 @@ jobs:
           dovecot-pop3d \
           isync \
           notmuch \
-          swaks \
           libnotmuch-dev python3-notmuch2 ssh
     
     - name: Setup Dovecot IMAP server
@@ -82,38 +81,38 @@ jobs:
     
     - name: Seed initial emails
       run: |
-        swaks --to imapuser@localhost \
-              --from sender1@example.com \
-              --server 127.0.0.1:143 \
-              --auth-user imapuser \
-              --auth-password testpass \
-              --header "Subject: Test Email 1" \
-              --body "This is the first test email body." \
-              --protocol IMAP || echo "First email delivery failed"
+        sudo -u imapuser tee /home/imapuser/Maildir/new/msg1.eml > /dev/null <<EOF
+        From: sender1@example.com
+        To: imapuser@localhost
+        Subject: Test Email 1
+        Date: $(date -R)
+        Message-ID: <msg1@example.com>
         
-        swaks --to imapuser@localhost \
-              --from sender1@example.com \
-              --server 127.0.0.1:143 \
-              --auth-user imapuser \
-              --auth-password testpass \
-              --header "Subject: Test Email 2" \
-              --body "This is the second test email body." \
-              --protocol IMAP || echo "Second email delivery failed"
+        This is the first test email body.
+        EOF
+        
+        sudo -u imapuser tee /home/imapuser/Maildir/new/msg2.eml > /dev/null <<EOF
+        From: sender2@example.com
+        To: imapuser@localhost
+        Subject: Test Email 2
+        Date: $(date -R)
+        Message-ID: <msg2@example.com>
+        
+        This is the second test email body.
+        EOF
+        
+        sudo -u imapuser tee /home/imapuser/Maildir/new/msg3.eml > /dev/null <<EOF
+        From: sender2@example.com
+        To: imapuser@localhost
+        Subject: Test Email 3
+        Date: $(date -R)
+        Message-ID: <msg3@example.com>
+        
+        This is the third test email body.
+        EOF
 
-        swaks --to imapuser@localhost \
-              --from sender1@example.com \
-              --server 127.0.0.1:143 \
-              --auth-user imapuser \
-              --auth-password testpass \
-              --header "Subject: Test Email 3" \
-              --body "This is the third test email body." \
-              --protocol IMAP || echo "Third email delivery failed"
-
-        # Set proper permissions
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-
-        sudo -u imapuser ls -la /home/imapuser/Maildir/new/
         
     - name: Set up notmuch and other user
       run: |
