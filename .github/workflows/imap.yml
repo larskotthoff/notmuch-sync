@@ -115,6 +115,8 @@ jobs:
         # Set proper permissions
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
+
+        sudo -u testuser ls -la /home/testuser/Maildir/new/
         
     - name: Set up notmuch and other user
       run: |
@@ -173,6 +175,8 @@ jobs:
         Create Both
         SyncState *
         EOF
+
+        mkdir -p $GITHUB_WORKSPACE/mail/INBOX/{cur,new,tmp}
     
     - name: Configure mbsync user synctest
       run: |
