@@ -298,7 +298,7 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: sudo ls -a -R $GITHUB_WORKSPACE/mail /home/synctest/mail
-    - run: sudo sha256sum $GITHUB_WORKSPACE/mail/INBOX/{new,cur}/* /home/synctest/mail/INBOX/{new,cur}/*
+    - run: sudo sha256sum $GITHUB_WORKSPACE/mail/INBOX/new/* /home/synctest/mail/INBOX/new/*
     - run: sudo cat $GITHUB_WORKSPACE/mail/INBOX/new/* /home/synctest/mail/INBOX/new/*
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
