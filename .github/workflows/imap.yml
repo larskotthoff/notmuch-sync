@@ -174,7 +174,7 @@ jobs:
     - name: Run initial mbsync
       run: |
         echo "Running initial mbsync..."
-        mbsync --debug-sync -V -c ~/.config/mbsync/config
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     
     - name: Set up notmuch etc
       run: |
@@ -214,7 +214,7 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
     # add mail, sync again
     - run: |
@@ -227,7 +227,7 @@ jobs:
         
         This is another email body.
         EOF
-    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+    - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
@@ -238,7 +238,7 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
     # same again, but from other side
     - run: |
@@ -251,7 +251,7 @@ jobs:
         
         This is yet another email body.
         EOF
-    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
@@ -262,7 +262,7 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+    - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
 
     # same again, both sides
     - run: |
@@ -275,8 +275,8 @@ jobs:
         
         This is yet another another email body.
         EOF
-    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
-    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
@@ -287,5 +287,5 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
-    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
