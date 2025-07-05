@@ -111,7 +111,6 @@ jobs:
 
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-        sudo systemctl restart dovecot
 
     - name: Configure mbsync user runner
       run: |
@@ -175,7 +174,7 @@ jobs:
     - name: Run initial mbsync
       run: |
         echo "Running initial mbsync..."
-        mbsync -V -a -c ~/.config/mbsync/config
+        mbsync --debug-sync -V -c ~/.config/mbsync/config
     
     - name: Set up notmuch etc
       run: |
@@ -204,6 +203,7 @@ jobs:
         sudo chmod 600 /home/synctest/.ssh/authorized_keys
         sudo service ssh start
     
+    # test initial sync
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
@@ -214,25 +214,78 @@ jobs:
     - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    
-    - name: Debug information (on failure)
-      if: failure()
-      run: |
-        echo "=== Debug Information ==="
-        echo "Dovecot status:"
-        sudo systemctl status dovecot || true
+    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+
+    # add mail, sync again
+    - run: |
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D6_0.example.org > /dev/null <<EOF
+        From: sender1@example.com
+        To: imapuser@localhost
+        Subject: Test Email new
+        Date: $(date -R)
+        Message-ID: <msg4@example.com>
         
-        echo "Dovecot logs:"
-        sudo tail -50 /var/log/dovecot.log || true
+        This is another email body.
+        EOF
+    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+    - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+
+    # same again, but from other side
+    - run: |
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D5_0.example.org > /dev/null <<EOF
+        From: sender1@example.com
+        To: imapuser@localhost
+        Subject: Test Email new again
+        Date: $(date -R)
+        Message-ID: <msg5@example.com>
         
-        echo "Server maildir contents:"
-        sudo -u imapuser find /home/imapuser/Maildir -type f | head -20 || true
+        This is yet another email body.
+        EOF
+    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+
+    # same again, both sides
+    - run: |
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D4_0.example.org > /dev/null <<EOF
+        From: sender1@example.com
+        To: imapuser@localhost
+        Subject: Test Email new again again
+        Date: $(date -R)
+        Message-ID: <msg6@example.com>
         
-        echo "Local maildir contents:"
-        find ~/Maildir -type f | head -20 || true
-        
-        echo "mbsync test connection:"
-        echo "CAPABILITY" | nc 127.0.0.1 143 || true
-        
-        echo "Processes:"
-        ps aux | grep -E "(dovecot|mbsync|notmuch)" || true
+        This is yet another another email body.
+        EOF
+    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: mbsync --debug-sync -V -c ~/.config/mbsync/config
+    - run: sudo -u synctest mbsync --debug-sync -V -c /home/synctest/.config/mbsync/config
