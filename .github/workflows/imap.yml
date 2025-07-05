@@ -75,10 +75,11 @@ jobs:
         auth_debug = yes
         auth_verbose = yes
         EOF
+        sudo systemctl start dovecot
     
     - name: Seed initial emails
       run: |
-        sudo -u imapuser tee /home/imapuser/Maildir/new/msg1.eml > /dev/null <<EOF
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D9_0.example.org > /dev/null <<EOF
         From: sender1@example.com
         To: imapuser@localhost
         Subject: Test Email 1
@@ -88,7 +89,7 @@ jobs:
         This is the first test email body.
         EOF
         
-        sudo -u imapuser tee /home/imapuser/Maildir/new/msg2.eml > /dev/null <<EOF
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D8_0.example.org > /dev/null <<EOF
         From: sender2@example.com
         To: imapuser@localhost
         Subject: Test Email 2
@@ -98,7 +99,7 @@ jobs:
         This is the second test email body.
         EOF
         
-        sudo -u imapuser tee /home/imapuser/Maildir/new/msg3.eml > /dev/null <<EOF
+        sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D7_0.example.org > /dev/null <<EOF
         From: sender2@example.com
         To: imapuser@localhost
         Subject: Test Email 3
@@ -110,7 +111,7 @@ jobs:
 
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-        sudo systemctl start dovecot
+        sudo systemctl restart dovecot
 
     - name: Configure mbsync user runner
       run: |
