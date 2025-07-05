@@ -212,10 +212,10 @@ jobs:
     - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: find $GITHUB_WORKSPACE/mail/ -name ".uidvalidity" -o -name ".mbsyncstate" -type f -exec bash -c "diff \$1 /home/synctest\${1#$GITHUB_WORKSPACE}" {} \;
+    - run: find $GITHUB_WORKSPACE/mail/ -name ".uidvalidity" -o -name ".mbsyncstate" -type f -exec bash -c "diff $1 /home/synctest${1#$GITHUB_WORKSPACE}" \;
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | grep -vq "new message"
 
     # add mail, sync again
@@ -238,8 +238,8 @@ jobs:
     - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | grep -vq "new message"
 
@@ -263,8 +263,8 @@ jobs:
     - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config | grep -vq "new message"
 
@@ -289,8 +289,10 @@ jobs:
     - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
     - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
-    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config | grep -vq "new message"
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | grep -vq "new message"
+
+    - run: sudo ls -R $GITHUB_WORKSPACE/mail /home/synctest/mail
