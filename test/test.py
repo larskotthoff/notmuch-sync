@@ -1399,3 +1399,4 @@ def test_digest():
     assert "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" == ns.digest(b"foo")
     assert "578f2f7c0b2e8ea5be4c8d245b07dec37c62ce4644fadb2a5c23839b39d6c260" == ns.digest(b"foo\nbar\nfoobar")
     assert "578f2f7c0b2e8ea5be4c8d245b07dec37c62ce4644fadb2a5c23839b39d6c260" == ns.digest(b"foo\nbar\nX-TUID: bla\nfoobar")
+    assert "578f2f7c0b2e8ea5be4c8d245b07dec37c62ce4644fadb2a5c23839b39d6c260" == ns.digest(b"foo\nbar\nX-TUID: blarg\nfoobar")
