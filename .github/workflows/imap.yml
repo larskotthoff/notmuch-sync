@@ -24,7 +24,7 @@ jobs:
           dovecot-pop3d \
           isync \
           notmuch \
-          libnotmuch-dev python3-notmuch2 ssh
+          afew libnotmuch-dev python3-notmuch2 ssh
     
     - name: Setup Dovecot IMAP server
       run: |
@@ -141,7 +141,7 @@ jobs:
         SyncState *
         EOF
 
-        mkdir -p $GITHUB_WORKSPACE/mail/INBOX/{cur,new,tmp}
+        mkdir -p $GITHUB_WORKSPACE/mail/{INBOX,Trash}/{cur,new,tmp}
     
     - name: Configure mbsync user synctest
       run: |
@@ -184,6 +184,8 @@ jobs:
         notmuch tag +one subject:1
         notmuch tag +two subject:2
         notmuch tag +three subject:3
+        mkdir -p ~/.config/afew
+        echo -e "[MailMover]\nfolders = INBOX Trash\nrename=True\nINBOX = 'tag:deleted':Trash" > ~/.config/afew/config
         echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted\n[maildir]\nsynchronize_flags=true" > /tmp/.notmuch-config
         sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
         sudo -u synctest mkdir /home/synctest/mail
@@ -318,5 +320,25 @@ jobs:
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
+
+    # delete and move
+    - run: notmuch tag +deleted '*'
+    - run: afew --move-mails --verbose
+    - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config && notmuch new
+    - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/Trash/.uidvalidity /home/synctest/mail/Trash/.uidvalidity
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/Trash/.mbsyncstate /home/synctest/mail/Trash/.mbsyncstate
 
     - run: sudo ls -a -R $GITHUB_WORKSPACE/mail /home/synctest/mail
