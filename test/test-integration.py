@@ -530,12 +530,13 @@ def test_sync_tags_files_moved_twice(shell):
 
             out = sync(shell, local_conf, remote_conf).split('\n')
             assert "local:\t2 new messages,\t2 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
             assert Path(os.path.join(local, "mails", "html-only1.eml")).exists()
-            assert Path(os.path.join(remote, "mails", "html-only.eml")).exists()
+            assert not Path(os.path.join(local, "mails", "html-only.eml")).exists()
+            assert not Path(os.path.join(remote, "mails", "html-only.eml")).exists()
             assert Path(os.path.join(remote, "mails", "simple.eml")).exists()
 
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:874llc2bkp.fsf@curie.anarc.at",
@@ -568,17 +569,17 @@ def test_sync_tags_files_moved_twice(shell):
             # we record the last sync before transferring files and
             # adding/tagging them, so the revision after finished sync is higher
             lsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": local_conf}).stdout.split('\t')
-            assert lsum[2] == "10\n"
+            assert lsum[2] == "11\n"
             rsum = shell.run("notmuch", "count", "--lastmod", env={"NOTMUCH_CONFIG": remote_conf}).stdout.split('\t')
-            assert rsum[2] == "10\n"
+            assert rsum[2] == "9\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
             assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
             assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
-                assert f.read() == f"10 {lsum[1]}"
+                assert f.read() == f"11 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
-                assert f.read() == f"10 {rsum[1]}"
+                assert f.read() == f"9 {rsum[1]}"
 
 
 def test_sync_tags_files_none_remote(shell):

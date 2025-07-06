@@ -213,17 +213,20 @@ def initial_sync(from_stream, to_stream):
     return (prefix, changes["mine"], changes["theirs"], tchanges, fname, revision)
 
 
-def get_missing_files(changes_mine, changes_theirs, prefix):
+def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False):
     """
     Determine which files are missing locally compared to the remote, and handle
     file moves/copies based on SHA256 checksums. Delete any files that aren't
-    there on the remote anymore, unless the message ID was also changed locally.
-    This never deletes a message, only duplicate files for a message.
+    there on the remote anymore. This never deletes a message, only duplicate
+    files for a message.
 
     Args:
         changes_mine (dict): Local changes.
         changes_theirs (dict): Remote changes.
         prefix (str): Prefix path for filenames (notmuch config database.path).
+        move_on_change: Whether to move file that has local and remote changes.
+        This flag is used to prevent infinite loops where local has one file
+        name and remote another file name (e.g. when running mbsync independently).
 
     Returns:
         tuple: (dict of missing files, number of local moves/copies, number of
@@ -251,25 +254,23 @@ def get_missing_files(changes_mine, changes_theirs, prefix):
                             # check if it has been moved/copied
                             matches = [ x for x in hashes_mine if f["sha"] == x["sha"] ]
                             if len(matches) > 0:
-                                mcchanges += 1
                                 src = os.path.join(prefix, matches[0]["name"])
                                 dst = os.path.join(prefix, f["name"])
-                                # if there's a local change for this ID, copy
-                                # this is to prevent inconsistencies when
-                                # changes happen on both sides
-                                if matches[0] in changes_theirs[mid]["files"] or mid in changes_mine:
+                                if matches[0] in changes_theirs[mid]["files"]:
+                                    mcchanges += 1
                                     logger.info("Copying %s to %s.", src, dst)
                                     shutil.copy(src, dst)
                                     fnames_mine.append(f["name"])
-                                else:
+                                    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                                        dbw.add(dst)
+                                elif mid not in changes_mine or move_on_change:
+                                    mcchanges += 1
                                     logger.info("Moving %s to %s.", src, dst)
                                     shutil.move(src, dst)
                                     fnames_mine.append(f["name"])
                                     fnames_mine.remove(matches[0]["name"])
-                                with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                                    dbw.add(dst)
-                                    # see above comment for local changes check
-                                    if matches[0] not in changes_theirs[mid]["files"] and mid not in changes_mine:
+                                    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                                        dbw.add(dst)
                                         logger.info("Removing %s from DB.", src)
                                         dbw.remove(src)
                                 missing_mine.remove(f["name"])
@@ -622,7 +623,7 @@ def sync_remote(args):
         args: Parsed command-line arguments.
     """
     prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
-    missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix)
+    missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False)
     rmessages, rfiles = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     # record previous sync version after transferring files -- if something goes
     # wrong while transferring files, we'd miss any new files during the next
@@ -674,7 +675,7 @@ def sync_local(args):
         try:
             prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(from_remote, to_remote)
             logger.debug("Local changes %s, remote changes %s.", changes_mine, changes_theirs)
-            missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix)
+            missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=True)
             logger.debug("Local missing files %s.", missing)
             rmessages, rfiles = sync_files(prefix, missing, from_remote, to_remote)
             # record previous sync version after transferring files -- if something goes

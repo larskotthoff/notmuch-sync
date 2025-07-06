@@ -4,7 +4,7 @@ import sys
 import io
 import struct
 from unittest.mock import MagicMock, PropertyMock, call, mock_open, patch
-from tempfile import NamedTemporaryFile, gettempdir
+from tempfile import NamedTemporaryFile, TemporaryDirectory, gettempdir
 
 import notmuch2
 
@@ -418,7 +418,7 @@ def test_missing_files_ghost():
         assert db.find.mock_calls == [ call("bar") ]
 
 
-def test_missing_files_inconsistent():
+def test_missing_files_inconsistent_no_move():
     m = MagicMock()
     m.ghost = False
     db = lambda: None
@@ -432,7 +432,7 @@ def test_missing_files_inconsistent():
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
+        with patch("shutil.move") as sm:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
                 with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
                     m.filenames = MagicMock(return_value=[f1.name])
@@ -446,11 +446,49 @@ def test_missing_files_inconsistent():
                     changes_theirs = {"foo": {"tags": ["foo"],
                                               "files": [{"name": f2.name.removeprefix(prefix),
                                                          "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                    assert ({}, 1, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix)
+                    assert ({}, 0, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False)
 
-                    sc.assert_called_once_with(f1.name, f2.name)
-                    db.add.assert_called_once_with(f2.name)
+                    assert sm.call_count == 0
+                    assert db.add.call_count == 0
                     assert db.remove.call_count == 0
+
+    db.find.assert_called_once_with("foo")
+    assert m.filenames.call_count == 2
+
+
+def test_missing_files_inconsistent_move():
+    m = MagicMock()
+    m.ghost = False
+    db = lambda: None
+
+    db.find = MagicMock(return_value=m)
+    db.add = MagicMock(return_value=(m, True))
+    db.remove = MagicMock()
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("shutil.move") as sm:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail one")
+                    f1.flush()
+                    f2.write("mail one")
+                    f2.flush()
+                    changes_mine = {"foo": {"tags": ["foo"],
+                                            "files": [{"name": f1.name.removeprefix(prefix),
+                                                       "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    changes_theirs = {"foo": {"tags": ["foo"],
+                                              "files": [{"name": f2.name.removeprefix(prefix),
+                                                         "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    assert ({}, 1, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=True)
+
+                    sm.assert_called_once_with(f1.name, f2.name)
+                    db.add.assert_called_once_with(f2.name)
+                    db.remove.assert_called_once_with(f1.name)
 
     db.find.assert_called_once_with("foo")
     assert m.filenames.call_count == 2
@@ -676,46 +714,6 @@ def test_missing_files_copy_delete():
     assert m.filenames.call_count == 2
 
 
-def test_missing_files_delete_inconsistent():
-    m = MagicMock()
-    m.ghost = False
-    db = lambda: None
-
-    db.find = MagicMock(return_value=m)
-    db.add = MagicMock(return_value=(m, True))
-    db.remove = MagicMock()
-
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with patch("pathlib.Path.unlink") as pu:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                        m.filenames = MagicMock(return_value=[f1.name])
-                        f1.write("mail one")
-                        f1.flush()
-                        f2.write("mail one")
-                        f2.flush()
-                        changes_mine = {"foo": {"tags": ["foo"],
-                                                "files": [{"name": f1.name.removeprefix(prefix),
-                                                           "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                        changes_theirs = {"foo": {"tags": ["foo"],
-                                                  "files": [{"name": f2.name.removeprefix(prefix),
-                                                             "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                        assert ({}, 1, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix)
-
-                        sc.assert_called_once_with(f1.name, f2.name)
-                        db.add.assert_called_once_with(f2.name)
-                        assert db.remove.call_count == 0
-                        assert pu.call_count == 0
-
-    db.find.assert_called_once_with("foo")
-    assert m.filenames.call_count == 2
-
-
 def test_missing_files_delete_mismatch():
     m = MagicMock()
     m.ghost = False
@@ -730,25 +728,24 @@ def test_missing_files_delete_mismatch():
     mock_ctx.__exit__.return_value = False
 
     with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with patch("pathlib.Path.unlink") as pu:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                        m.filenames = MagicMock(return_value=[f1.name])
-                        f1.write("mail two")
-                        f1.flush()
-                        f2.write("mail one")
-                        f2.flush()
-                        changes_theirs = {"foo": {"tags": ["foo"],
-                                                  "files": [{"name": f2.name.removeprefix(prefix),
-                                                             "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
-                        with pytest.raises(ValueError) as pwe:
-                            ns.get_missing_files({}, changes_theirs, prefix)
-                        assert pwe.type == ValueError
-                        assert str(pwe.value) == f"Message 'foo' has ['{f2.name.removeprefix(prefix)}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
+        with patch("pathlib.Path.unlink") as pu:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail two")
+                    f1.flush()
+                    f2.write("mail one")
+                    f2.flush()
+                    changes_theirs = {"foo": {"tags": ["foo"],
+                                              "files": [{"name": f2.name.removeprefix(prefix),
+                                                         "sha": "a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d"}]}}
+                    with pytest.raises(ValueError) as pwe:
+                        ns.get_missing_files({}, changes_theirs, prefix)
+                    assert pwe.type == ValueError
+                    assert str(pwe.value) == f"Message 'foo' has ['{f2.name.removeprefix(prefix)}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
 
-                        assert db.add.call_count == 0
-                        assert pu.call_count == 0
+                    assert db.add.call_count == 0
+                    assert pu.call_count == 0
 
     assert db.find.mock_calls == [ call("foo") ]
     assert m.filenames.call_count == 2
@@ -1175,105 +1172,113 @@ def test_sync_mbsync_local_nothing():
         yield []
         yield []
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x02{}")
-        ostream = io.BytesIO()
-        ns.sync_mbsync_local(prefix, istream, ostream)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x02{}")
+            ostream = io.BytesIO()
+            ns.sync_mbsync_local(tmpdir, istream, ostream)
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
 
 
 def test_sync_mbsync_local():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 1
-    m1.stat = MagicMock(return_value=s1)
-    m2 = MagicMock()
-    m2.__str__ = MagicMock(return_value=(prefix + ".mbsyncstate"))
-    s2 = lambda: None
-    s2.st_mtime = 0
-    m2.stat = MagicMock(return_value=s2)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 1
+        m1.stat = MagicMock(return_value=s1)
+        m2 = MagicMock()
+        m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
+        s2 = lambda: None
+        s2.st_mtime = 0
+        m2.stat = MagicMock(return_value=s2)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield [m2]
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield [m2]
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x23{\".uidvalidity\":0,\".mbsyncstate\":1}\x00\x00\x00\x01b")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"a")) as o:
-            ns.sync_mbsync_local(prefix, istream, ostream)
-            assert call("/tmp/.uidvalidity", "rb") in o.mock_calls
-            assert call("/tmp/.mbsyncstate", "wb") in o.mock_calls
-            hdl = o()
-            hdl.read.assert_called_once()
-            hdl.write.assert_called_once()
-            args = hdl.write.call_args.args
-            assert b"b" == args[0]
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x23{\".uidvalidity\":0,\".mbsyncstate\":1}\x00\x00\x00\x01b")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                ns.sync_mbsync_local(tmpdir, istream, ostream)
+                assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
+                assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
+                hdl = o()
+                hdl.read.assert_called_once()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert b"b" == args[0]
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
 
 
 def test_sync_mbsync_local_no_changes():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 1
-    m1.stat = MagicMock(return_value=s1)
-    m2 = MagicMock()
-    m2.__str__ = MagicMock(return_value=(prefix + ".mbsyncstate"))
-    s2 = lambda: None
-    s2.st_mtime = 1
-    m2.stat = MagicMock(return_value=s2)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 1
+        m1.stat = MagicMock(return_value=s1)
+        m2 = MagicMock()
+        m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
+        s2 = lambda: None
+        s2.st_mtime = 1
+        m2.stat = MagicMock(return_value=s2)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield [m2]
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield [m2]
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x23{\".uidvalidity\":1,\".mbsyncstate\":1}")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"a")) as o:
-            ns.sync_mbsync_local(prefix, istream, ostream)
-            assert o.call_count == 0
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x23{\".uidvalidity\":1,\".mbsyncstate\":1}")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                ns.sync_mbsync_local(tmpdir, istream, ostream)
+                assert o.call_count == 0
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
 
 
 def test_sync_mbsync_local_missing():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 1
-    m1.stat = MagicMock(return_value=s1)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 1
+        m1.stat = MagicMock(return_value=s1)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield []
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield []
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x12{\".mbsyncstate\":1}\x00\x00\x00\x01b")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"a")) as o:
-            ns.sync_mbsync_local(prefix, istream, ostream)
-            assert call("/tmp/.uidvalidity", "rb") in o.mock_calls
-            assert call("/tmp/.mbsyncstate", "wb") in o.mock_calls
-            hdl = o()
-            hdl.read.assert_called_once()
-            hdl.write.assert_called_once()
-            args = hdl.write.call_args.args
-            assert b"b" == args[0]
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x12{\".mbsyncstate\":1}\x00\x00\x00\x01b")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                ns.sync_mbsync_local(tmpdir, istream, ostream)
+                assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
+                assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
+                hdl = o()
+                hdl.read.assert_called_once()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert b"b" == args[0]
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
 
 
 def test_sync_mbsync_remote_nothing():
@@ -1281,102 +1286,110 @@ def test_sync_mbsync_remote_nothing():
         yield []
         yield []
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
-        ostream = io.BytesIO()
-        ns.sync_mbsync_remote(prefix, istream, ostream)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
+            ostream = io.BytesIO()
+            ns.sync_mbsync_remote(tmpdir, istream, ostream)
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x02{}" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x02{}" == out
 
 
 def test_sync_mbsync_remote():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 0
-    m1.stat = MagicMock(return_value=s1)
-    m2 = MagicMock()
-    m2.__str__ = MagicMock(return_value=(prefix + ".mbsyncstate"))
-    s2 = lambda: None
-    s2.st_mtime = 1
-    m2.stat = MagicMock(return_value=s2)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 0
+        m1.stat = MagicMock(return_value=s1)
+        m2 = MagicMock()
+        m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
+        s2 = lambda: None
+        s2.st_mtime = 1
+        m2.stat = MagicMock(return_value=s2)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield [m2]
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield [m2]
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"b")) as o:
-            ns.sync_mbsync_remote(prefix, istream, ostream)
-            assert call("/tmp/.uidvalidity", "wb") in o.mock_calls
-            assert call("/tmp/.mbsyncstate", "rb") in o.mock_calls
-            hdl = o()
-            hdl.read.assert_called_once()
-            hdl.write.assert_called_once()
-            args = hdl.write.call_args.args
-            assert b"a" == args[0]
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"b")) as o:
+                ns.sync_mbsync_remote(tmpdir, istream, ostream)
+                assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
+                assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
+                hdl = o()
+                hdl.read.assert_called_once()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert b"a" == args[0]
 
-            out = ostream.getvalue()
-            assert b"\x00\x00\x00\x26{\".uidvalidity\": 0, \".mbsyncstate\": 1}\x00\x00\x00\x01b" == out
+                out = ostream.getvalue()
+                assert b"\x00\x00\x00\x26{\".uidvalidity\": 0, \".mbsyncstate\": 1}\x00\x00\x00\x01b" == out
 
 
 def test_sync_mbsync_remote_no_changes():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 1
-    m1.stat = MagicMock(return_value=s1)
-    m2 = MagicMock()
-    m2.__str__ = MagicMock(return_value=(prefix + ".mbsyncstate"))
-    s2 = lambda: None
-    s2.st_mtime = 1
-    m2.stat = MagicMock(return_value=s2)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 1
+        m1.stat = MagicMock(return_value=s1)
+        m2 = MagicMock()
+        m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
+        s2 = lambda: None
+        s2.st_mtime = 1
+        m2.stat = MagicMock(return_value=s2)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield [m2]
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield [m2]
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"a")) as o:
-            ns.sync_mbsync_remote(prefix, istream, ostream)
-            assert o.call_count == 0
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                ns.sync_mbsync_remote(tmpdir, istream, ostream)
+                assert o.call_count == 0
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x26{\".uidvalidity\": 1, \".mbsyncstate\": 1}" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x26{\".uidvalidity\": 1, \".mbsyncstate\": 1}" == out
 
 
 def test_sync_mbsync_remote_missing():
-    m1 = MagicMock()
-    m1.__str__ = MagicMock(return_value=(prefix + ".uidvalidity"))
-    s1 = lambda: None
-    s1.st_mtime = 1
-    m1.stat = MagicMock(return_value=s1)
+    with TemporaryDirectory() as _tmpdir:
+        tmpdir = _tmpdir + os.sep
+        m1 = MagicMock()
+        m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
+        s1 = lambda: None
+        s1.st_mtime = 1
+        m1.stat = MagicMock(return_value=s1)
 
-    def effect(*args, **kwargs):
-        yield [m1]
-        yield []
+        def effect(*args, **kwargs):
+            yield [m1]
+            yield []
 
-    with patch("pathlib.Path.rglob") as pr:
-        pr.side_effect = effect()
-        istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01b")
-        ostream = io.BytesIO()
-        with patch("builtins.open", mock_open(read_data=b"a")) as o:
-            ns.sync_mbsync_remote(prefix, istream, ostream)
-            assert call("/tmp/.uidvalidity", "wb") in o.mock_calls
-            assert call("/tmp/.mbsyncstate", "rb") in o.mock_calls
-            hdl = o()
-            hdl.read.assert_called_once()
-            hdl.write.assert_called_once()
-            args = hdl.write.call_args.args
-            assert b"b" == args[0]
+        with patch("pathlib.Path.rglob") as pr:
+            pr.side_effect = effect()
+            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01b")
+            ostream = io.BytesIO()
+            with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                ns.sync_mbsync_remote(tmpdir, istream, ostream)
+                assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
+                assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
+                hdl = o()
+                hdl.read.assert_called_once()
+                hdl.write.assert_called_once()
+                args = hdl.write.call_args.args
+                assert b"b" == args[0]
 
-        out = ostream.getvalue()
-        assert b"\x00\x00\x00\x13{\".uidvalidity\": 1}\x00\x00\x00\x01a" == out
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x13{\".uidvalidity\": 1}\x00\x00\x00\x01a" == out
