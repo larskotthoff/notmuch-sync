@@ -348,7 +348,7 @@ jobs:
     # now with notmuch ML mails
     - run: |
         wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz
-        sudo -u imapuser tar -C /home/imapuser/maildir/new xf notmuch-list.tar.xz
+        sudo -u imapuser cd /home/imapuser/Maildir/new && sudo -u imapuser tar xf $GITHUB_WORKSPACE/notmuch-list.tar.xz
         sudo systemctl restart dovecot
     - run: time mbsync -a --debug-sync -V -c ~/.config/mbsync/config && notmuch new
     - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
