@@ -179,12 +179,12 @@ jobs:
     
     - name: Set up notmuch etc
       run: |
-        echo -e "[database]\npath=$GITHUB_WORKSPACE/mail\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config
+        echo -e "[database]\npath=$GITHUB_WORKSPACE/mail\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted\n[maildir]\nsynchronize_flags=true" > ~/.notmuch-config
         notmuch new
         notmuch tag +one subject:1
         notmuch tag +two subject:2
         notmuch tag +three subject:3
-        echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > /tmp/.notmuch-config
+        echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted\n[maildir]\nsynchronize_flags=true" > /tmp/.notmuch-config
         sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
         sudo -u synctest mkdir /home/synctest/mail
         sudo -u synctest notmuch new
