@@ -24,7 +24,7 @@ jobs:
           dovecot-pop3d \
           isync \
           notmuch \
-          afew libnotmuch-dev python3-notmuch2 ssh
+          afew libnotmuch-dev python3-notmuch2 ssh wget
     
     - name: Setup Dovecot IMAP server
       run: |
@@ -345,4 +345,22 @@ jobs:
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
-    - run: sudo ls -a -R $GITHUB_WORKSPACE/mail /home/synctest/mail
+    # now with notmuch ML mails
+    - run: |
+        wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz
+        sudo -u imapuser tar -C /home/imapuser/maildir/new xf notmuch-list.tar.xz
+        sudo systemctl restart dovecot
+    - run: time mbsync -a --debug-sync -V -c ~/.config/mbsync/config && notmuch new
+    - run: time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/mail -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: time sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
+    - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
