@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
 
+def digest(data):
+    """
+    Compute SHA256 digest of data, removing any X-TUID: lines. This is
+    nececessary because mbsync adds these lines to keep track of internal
+    progress, but they make identical emails that were retrieved separately
+    different.
+
+    Args:
+        data (bytes): The data to compute the checsum for.
+
+    Returns:
+        The computed checksum.
+    """
+    lines = data.splitlines(keepends=True)
+    filtered_lines = [line for line in lines if not line.startswith(b"X-TUID: ")]
+    return hashlib.new("sha256", b''.join(filtered_lines)).hexdigest()
+
+
 def write(data, stream):
     """
     Write data to a stream with a 4-byte length prefix.
@@ -88,7 +106,7 @@ def get_changes(db, revision, prefix, sync_file):
 
     return {msg.messageid: {"tags": list(msg.tags), "files": [
         {"name": str(f).removeprefix(prefix),
-         "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()} for f in msg.filenames()
+         "sha": digest(Path(f).read_bytes())} for f in msg.filenames()
         ]} for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
@@ -247,7 +265,7 @@ def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False
                 missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
                 if len(missing_mine) > 0:
                     hashes_mine = [{"name": str(f).removeprefix(prefix),
-                                    "sha": hashlib.new("sha256", Path(f).read_bytes()).hexdigest()}
+                                    "sha": digest(Path(f).read_bytes())}
                                     for f in msg.filenames()]
                     for f in changes_theirs[mid]["files"]:
                         if f["name"] in missing_mine:
@@ -324,9 +342,9 @@ def recv_file(fname, stream, sha=None, overwrite_raise=True):
         checksum does not match expected.
     """
     content = read(stream)
-    sha_mine = hashlib.new("sha256", content).hexdigest()
+    sha_mine = digest(content)
     if Path(fname).exists() and overwrite_raise:
-        sha_exists = hashlib.new("sha256", Path(fname).read_bytes()).hexdigest()
+        sha_exists = digest(Path(fname).read_bytes())
         if sha_exists != sha_mine:
             raise ValueError(f"Set to receive '{fname}', but already exists with different content!")
     if sha and sha_mine != sha:

@@ -273,7 +273,7 @@ jobs:
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
-    # same again, both sides -- this will result in duplicate files and UIDs and fail (this is an inherent mbsync limitation, as it generates a filename for each message)
+    # same again, both sides
     - run: |
         sudo -u imapuser tee /home/imapuser/Maildir/new/1436256389.M802838P30713V0000000000000801I0000000000000008D4_0.example.org > /dev/null <<EOF
         From: sender1@example.com
