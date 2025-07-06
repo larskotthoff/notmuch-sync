@@ -185,7 +185,7 @@ jobs:
         notmuch tag +two subject:2
         notmuch tag +three subject:3
         mkdir -p ~/.config/afew
-        echo -e "[MailMover]\nfolders = INBOX Trash\nrename=True\nINBOX = 'tag:deleted':Trash" > ~/.config/afew/config
+        echo -e "[MailMover]\nfolders = INBOX\nrename=True\nINBOX = 'tag:deleted':Trash" > ~/.config/afew/config
         echo -e "[database]\npath=/home/synctest/mail\nhook_dir=/home/synctest/.notmuch\n\n[user]\nname=test\nprimary_email=imapuser@localhost\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted\n[maildir]\nsynchronize_flags=true" > /tmp/.notmuch-config
         sudo -u synctest cp /tmp/.notmuch-config /home/synctest/
         sudo -u synctest mkdir /home/synctest/mail
