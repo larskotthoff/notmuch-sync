@@ -336,9 +336,8 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
+    - run: sudo ls -a -R $GITHUB_WORKSPACE/mail /home/synctest/mail
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/Trash/.uidvalidity /home/synctest/mail/Trash/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/Trash/.mbsyncstate /home/synctest/mail/Trash/.mbsyncstate
-
-    - run: sudo ls -a -R $GITHUB_WORKSPACE/mail /home/synctest/mail
