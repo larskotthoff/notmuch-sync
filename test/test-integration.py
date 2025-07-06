@@ -197,7 +197,7 @@ def test_sync_tags_files_verbose(shell):
             assert any("Setting tags ['attachment', 'local', 'remote'] for 20111101080303.30A10409E@asxas.net." in o for o in out)
             assert 'Tags synced.' in out[10]
             assert any('Sending file names missing on local...' in o for o in out)
-            assert any('Receving file names missing on remote...' in o for o in out)
+            assert any('Receiving file names missing on remote...' in o for o in out)
             assert 'Missing file names synced.' in out[13]
             assert any('1/1 Sending mails/simple.eml...' in o for o in out)
             assert any('1/1 Receiving mails/attachment.eml...' in o for o in out)

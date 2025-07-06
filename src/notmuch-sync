@@ -380,7 +380,7 @@ def sync_files(prefix, missing, from_stream, to_stream):
             write(f["name"].encode("utf-8"), to_stream)
 
     async def recv_fnames():
-        logger.info("Receving file names missing on remote...")
+        logger.info("Receiving file names missing on remote...")
         size_data = from_stream.read(4)
         transfer["read"] += 4
         nfiles = struct.unpack("!I", size_data)[0]

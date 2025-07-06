@@ -27,8 +27,8 @@ The communication protocol is binary. This is what the script produces on stdout
             - ID
 - if --mbsync is given:
     - remote to local:
-        - 4 bytes unsigned int length of JSON-encoded stat of all
-          .mbsyncstate/.uidvalidity files
+        - 4 bytes unsigned int length of JSON-encoded stat (name and mtime) of
+          all .mbsyncstate/.uidvalidity files
         - JSON-encoded stat of all .mbsyncstate/.uidvalidity files
         - for each file to send from remote to local:
             - 4 bytes unsigned int length of requested file
