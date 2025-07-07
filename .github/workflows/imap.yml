@@ -208,9 +208,9 @@ jobs:
     
     # test initial sync
     - run: |
-      time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -221,8 +221,8 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pulling message" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pulling message" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
@@ -239,12 +239,12 @@ jobs:
         EOF
         sudo systemctl restart dovecot
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
-      grep -q "pulling message" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
+        grep -q "pulling message" /tmp/mbsync.out
     - run: |
-      time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -255,8 +255,8 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pulling message" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pulling message" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
@@ -273,12 +273,12 @@ jobs:
         EOF
         sudo systemctl restart dovecot
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out && sudo -u synctest notmuch new
-      grep -q "pulling message" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out && sudo -u synctest notmuch new
+        grep -q "pulling message" /tmp/mbsync.out
     - run: |
-      time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -289,8 +289,8 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pulling message" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pulling message" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
@@ -307,15 +307,15 @@ jobs:
         EOF
         sudo systemctl restart dovecot
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
-      grep -q "pulling message" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
+        grep -q "pulling message" /tmp/mbsync.out
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out && sudo -u synctest notmuch new
-      grep -q "pulling message" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out && sudo -u synctest notmuch new
+        grep -q "pulling message" /tmp/mbsync.out
     - run: |
-      time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-synctest.out
-      grep -q "local:	0 new messages,	0 new files,	1 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-synctest.out
+        grep -q "local:	0 new messages,	0 new files,	1 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -326,23 +326,23 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pulling message" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pulling message" /tmp/mbsync.out
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pulling message" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pulling message" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
     # mark read
     - run: notmuch tag -unread '*'
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
-      grep -q "pushed flags" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
+        grep -q "pushed flags" /tmp/mbsync.out
     - run: |
-      time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -353,8 +353,8 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pushed flags" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pushed flags" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
@@ -362,12 +362,12 @@ jobs:
     - run: notmuch tag +deleted '*'
     - run: afew --move-mails --verbose
     - run: |
-      mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
-      grep -q "pushed deletion" /tmp/mbsync.out
+        mbsync -a --debug-sync -V -c ~/.config/mbsync/config | tee /tmp/mbsync.out && notmuch new
+        grep -q "pushed deletion" /tmp/mbsync.out
     - run: |
-      time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	0 new messages,	0 new files,	6 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	0 new messages,	0 new files,	6 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -378,17 +378,17 @@ jobs:
     - run: sudo -u synctest find /home/synctest/mail -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
     - run: diff -u /tmp/files.local /tmp/files.remote
     - run: |
-      sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
-      grep -vq "pushed deletion" /tmp/mbsync.out
+        sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config | tee /tmp/mbsync.out
+        grep -vq "pushed deletion" /tmp/mbsync.out
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.uidvalidity /home/synctest/mail/INBOX/.uidvalidity
     - run: sudo diff -u $GITHUB_WORKSPACE/mail/INBOX/.mbsyncstate /home/synctest/mail/INBOX/.mbsyncstate
 
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config && notmuch new
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config && sudo -u synctest notmuch new
     - run: |
-      time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-      grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-      grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
+        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
