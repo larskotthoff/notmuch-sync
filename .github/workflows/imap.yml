@@ -209,8 +209,9 @@ jobs:
     # test initial sync
     - run: |
         time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        cat /tmp/notmuch-sync.out
+        grep "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep "remote:	3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
