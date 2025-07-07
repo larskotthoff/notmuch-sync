@@ -76,7 +76,7 @@ jobs:
     - run: notmuch new
     - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: time notmuch-sync --delete --delete-no-check --verbose --remote localhost --user synctest
     - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: notmuch dump | sort > /tmp/dump.local
@@ -95,7 +95,7 @@ jobs:
     - run: sudo -u synctest notmuch new
     - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
+    - run: time notmuch-sync --delete --delete-no-check --verbose --verbose --remote localhost --user synctest
     - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: notmuch dump | sort > /tmp/dump.local
