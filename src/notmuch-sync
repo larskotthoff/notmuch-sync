@@ -37,9 +37,17 @@ def digest(data):
     Returns:
         The computed checksum.
     """
-    lines = data.splitlines(keepends=True)
-    filtered_lines = [line for line in lines if not line.startswith(b"X-TUID: ")]
-    return hashlib.new("sha256", b''.join(filtered_lines)).hexdigest()
+    pat = b"X-TUID: "
+    to_digest = data
+    start_idx = data.find(pat)
+    if start_idx != -1:
+        search_start = start_idx + len(pat)
+        end_idx = data.find(b"\n", search_start)
+
+        if end_idx != -1:
+            to_digest = data[:start_idx] + data[end_idx + 1:] 
+
+    return hashlib.new("sha256", to_digest).hexdigest()
 
 
 def write(data, stream):
