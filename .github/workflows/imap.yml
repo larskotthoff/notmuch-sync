@@ -402,6 +402,8 @@ jobs:
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
+    - run: sudo ls -Ra $GITHUB_WORKSPACE/mail /home/synctest/mail
+
     # now with notmuch ML mails
     - run: |
         wget https://nmbug.notmuchmail.org/archive/notmuch-list.tar.xz
