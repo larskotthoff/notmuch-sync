@@ -985,6 +985,7 @@ def test_sync_deletes_local():
     m2 = lambda: None
     m2.messageid = "bar"
     m2.filenames = MagicMock(return_value=["barfile"])
+    m2.tags = ["deleted"]
     m2.ghost = False
 
     db = lambda: None
@@ -1001,6 +1002,83 @@ def test_sync_deletes_local():
             istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
             ostream = io.BytesIO()
             assert 1 == ns.sync_deletes_local(istream, ostream)
+            pu.assert_called_once()
+
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x00" == out
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    db.remove.assert_called_once_with("barfile")
+    m2.filenames.assert_called_once()
+
+
+def test_sync_deletes_local_no_deleted():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = MagicMock()
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    mt = MagicMock(spec=list)
+    tags = ["foo"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    type(m2).tags = PropertyMock(return_value=mt)
+    m2.frozen = MagicMock()
+    m2.frozen.__enter__.return_value = None
+    m2.frozen.__exit__.return_value = False
+    m2.ghost = False
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            ostream = io.BytesIO()
+            assert 0 == ns.sync_deletes_local(istream, ostream)
+            assert pu.call_count == 0
+
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x00" == out
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    assert db.remove.call_count == 0
+    assert m2.filenames.call_count == 0
+
+
+def test_sync_deletes_local_no_deleted_no_check():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    m2.tags = ["foo"]
+    m2.ghost = False
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            ostream = io.BytesIO()
+            assert 1 == ns.sync_deletes_local(istream, ostream, no_check=True)
             pu.assert_called_once()
 
             out = ostream.getvalue()
@@ -1033,7 +1111,7 @@ def test_sync_deletes_local_ghost():
         with patch("pathlib.Path.unlink") as pu:
             istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
             ostream = io.BytesIO()
-            assert 1 == ns.sync_deletes_local(istream, ostream)
+            assert 0 == ns.sync_deletes_local(istream, ostream)
             assert pu.call_count == 0
 
             out = ostream.getvalue()
@@ -1079,6 +1157,7 @@ def test_sync_deletes_remote():
     m2 = lambda: None
     m2.messageid = "bar"
     m2.filenames = MagicMock(return_value=["barfile"])
+    m2.tags = ["deleted"]
     m2.ghost = False
 
     db = lambda: None
@@ -1095,6 +1174,83 @@ def test_sync_deletes_remote():
             istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
             ostream = io.BytesIO()
             assert 1 == ns.sync_deletes_remote(istream, ostream)
+            pu.assert_called_once()
+
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    db.remove.assert_called_once_with("barfile")
+    m2.filenames.assert_called_once()
+
+
+def test_sync_deletes_remote_no_deleted():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = MagicMock()
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    mt = MagicMock(spec=list)
+    tags = ["foo"]
+    mt.__iter__.return_value = iter(tags)
+    mt.__len__.return_value = len(tags)
+    mt.clear = MagicMock()
+    mt.add = MagicMock()
+    type(m2).tags = PropertyMock(return_value=mt)
+    m2.frozen = MagicMock()
+    m2.frozen.__enter__.return_value = None
+    m2.frozen.__exit__.return_value = False
+    m2.ghost = False
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            ostream = io.BytesIO()
+            assert 0 == ns.sync_deletes_remote(istream, ostream)
+            assert pu.call_count == 0
+
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+
+    db.messages.assert_called_once_with("*")
+    db.find.assert_called_once_with("bar")
+    assert db.remove.call_count == 0
+    assert m2.filenames.call_count == 0
+
+
+def test_sync_deletes_remote_no_deleted_no_check():
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
+    m2.filenames = MagicMock(return_value=["barfile"])
+    m2.tags = ["foo"]
+    m2.ghost = False
+
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+    db.remove = MagicMock()
+    db.find = MagicMock(return_value=m2)
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        with patch("pathlib.Path.unlink") as pu:
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            ostream = io.BytesIO()
+            assert 1 == ns.sync_deletes_remote(istream, ostream, no_check=True)
             pu.assert_called_once()
 
             out = ostream.getvalue()
@@ -1127,7 +1283,7 @@ def test_sync_deletes_remote_ghost():
         with patch("pathlib.Path.unlink") as pu:
             istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
             ostream = io.BytesIO()
-            assert 1 == ns.sync_deletes_remote(istream, ostream)
+            assert 0 == ns.sync_deletes_remote(istream, ostream)
             assert pu.call_count == 0
 
             out = ostream.getvalue()

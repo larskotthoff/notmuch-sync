@@ -45,7 +45,7 @@ def digest(data):
         end_idx = data.find(b"\n", search_start)
 
         if end_idx != -1:
-            to_digest = data[:start_idx] + data[end_idx + 1:] 
+            to_digest = data[:start_idx] + data[end_idx + 1:]
 
     return hashlib.new("sha256", to_digest).hexdigest()
 
@@ -437,7 +437,7 @@ def sync_files(prefix, missing, from_stream, to_stream):
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
 # have local figure out what needs to be deleted on both sides
-def sync_deletes_local(from_stream, to_stream):
+def sync_deletes_local(from_stream, to_stream, no_check=False):
     """
     Synchronize deletions for the local database and instruct remote to delete
     messages/files as needed.
@@ -445,6 +445,8 @@ def sync_deletes_local(from_stream, to_stream):
     Args:
         from_stream: Stream to read from the remote.
         to_stream: Stream to write to the remote.
+        no_check: Delete message not present on other side even if it doesn't
+        have the 'deleted' tag.
 
     Returns:
         int: Number of deletions performed locally.
@@ -486,16 +488,27 @@ def sync_deletes_local(from_stream, to_stream):
         logger.debug("Local IDs to be deleted %s.", to_del)
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
             for mid in to_del:
-                dels["a"] += 1
-                logger.info("Removing %s from DB and deleting files.", mid)
                 try:
                     msg = dbw.find(mid)
                     if msg.ghost:
                         continue
-                    for f in msg.filenames():
-                        logger.debug("Removing %s.", f)
-                        dbw.remove(f)
-                        Path(f).unlink()
+                    if "deleted" in msg.tags or no_check:
+                        dels["a"] += 1
+                        logger.info("Removing %s from DB and deleting files.", mid)
+                        for f in msg.filenames():
+                            logger.debug("Removing %s.", f)
+                            dbw.remove(f)
+                            Path(f).unlink()
+                    else:
+                        # not there on remote, but no "deleted" tag -- assume
+                        # that something went wrong and set tags again to make
+                        # it show up in next changeset to be synced back to
+                        # remote
+                        tags = list(msg.tags)
+                        with msg.frozen():
+                            msg.tags.clear()
+                            for tag in tags:
+                                msg.tags.add(tag)
                 except LookupError:
                     # already deleted? doesn't matter
                     pass
@@ -507,13 +520,15 @@ def sync_deletes_local(from_stream, to_stream):
     return dels["a"]
 
 
-def sync_deletes_remote(from_stream, to_stream):
+def sync_deletes_remote(from_stream, to_stream, no_check=False):
     """
     Receive instructions from local to delete messages/files from the remote database.
 
     Args:
         from_stream: Stream to read from the local.
         to_stream: Stream to write to the local.
+        no_check: Delete message not present on other side even if it doesn't
+        have the 'deleted' tag.
 
     Returns:
         int: Number of deletions performed remotely.
@@ -536,14 +551,24 @@ def sync_deletes_remote(from_stream, to_stream):
 
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
         for mid in to_del:
-            dels += 1
             try:
                 msg = dbw.find(mid)
                 if msg.ghost:
                     continue
-                for f in msg.filenames():
-                    dbw.remove(f)
-                    Path(f).unlink()
+                if "deleted" in msg.tags or no_check:
+                    dels += 1
+                    for f in msg.filenames():
+                        dbw.remove(f)
+                        Path(f).unlink()
+                else:
+                    # not  on local, but no "deleted" tag -- assume that
+                    # something went wrong and set tags again to make it
+                    # show up in next changeset to be synced back to local
+                    tags = list(msg.tags)
+                    with msg.frozen():
+                        msg.tags.clear()
+                        for tag in tags:
+                            msg.tags.add(tag)
             except LookupError:
                 # already deleted? doesn't matter
                 pass
@@ -662,7 +687,7 @@ def sync_remote(args):
 
     dchanges = 0
     if args.delete:
-        dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer)
+        dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer, args.delete_no_check)
     if args.mbsync:
         sync_mbsync_remote(prefix, sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
@@ -684,6 +709,8 @@ def sync_local(args):
         rargs = [(f"{args.user}@" if args.user else "") + args.remote, f"{args.path}"]
         if args.delete:
             rargs.append("--delete")
+        if args.delete_no_check:
+            rargs.append("--delete-no-check")
         if args.mbsync:
             rargs.append("--mbsync")
         cmd = shlex.split(args.ssh_cmd) + rargs
@@ -715,7 +742,7 @@ def sync_local(args):
 
             dchanges = 0
             if args.delete:
-                dchanges = sync_deletes_local(from_remote, to_remote)
+                dchanges = sync_deletes_local(from_remote, to_remote, args.delete_no_check)
             if args.mbsync:
                 sync_mbsync_local(prefix, from_remote, to_remote)
 
@@ -758,6 +785,7 @@ def main():
     parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="path to notmuch-sync on remote server")
     parser.add_argument("-c", "--remote-cmd", type=str, help="command to run to sync; overrides --remote, --user, --ssh-cmd, --path")
     parser.add_argument("-d", "--delete", action="store_true", help="sync deleted messages (requires listing all messages in notmuch database, potentially expensive)")
+    parser.add_argument("-x", "--delete-no-check", action="store_true", help="delete missing messages even if they don't have the 'deleted' tag -- potentially unsafe")
     args = parser.parse_args()
 
     if args.remote or args.remote_cmd:
