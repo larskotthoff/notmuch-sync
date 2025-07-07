@@ -61,6 +61,16 @@ jobs:
         service imap {
           process_limit = 1024
         }
+
+        namespace inbox {
+          inbox = yes
+          separator = /
+
+          mailbox "Trash" {
+            auto = subscribe
+            special_use = \Trash
+          }
+        }
         
         ssl = no
         disable_plaintext_auth = no
