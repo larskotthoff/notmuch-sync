@@ -25,9 +25,9 @@ type Config struct {
 // ParseArgs parses command-line arguments
 func ParseArgs(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("notmuch-sync", flag.ExitOnError)
-	
+
 	config := &Config{}
-	
+
 	fs.StringVar(&config.Remote, "r", "", "remote host to connect to")
 	fs.StringVar(&config.Remote, "remote", "", "remote host to connect to")
 	fs.StringVar(&config.User, "u", "", "SSH user to use")
@@ -48,16 +48,16 @@ func ParseArgs(args []string) (*Config, error) {
 	fs.BoolVar(&config.Delete, "delete", false, "sync deleted messages (requires listing all messages in notmuch database, potentially expensive)")
 	fs.BoolVar(&config.DeleteNoCheck, "x", false, "delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe")
 	fs.BoolVar(&config.DeleteNoCheck, "delete-no-check", false, "delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe")
-	
+
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	
+
 	// Set default path if not provided
 	if config.Path == "" {
 		config.Path = filepath.Base(os.Args[0])
 	}
-	
+
 	return config, nil
 }
 
@@ -68,10 +68,10 @@ func SetupLogging(config *Config) {
 		log.SetFlags(0)
 		return
 	}
-	
+
 	// Set logging format similar to Python version
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	
+
 	// Note: Go's log package doesn't have levels like Python's logging
 	// We'll handle verbosity in the actual logging calls
 }
@@ -87,9 +87,9 @@ func Run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse arguments: %w", err)
 	}
-	
+
 	SetupLogging(config)
-	
+
 	if config.Remote != "" || config.RemoteCmd != "" {
 		return SyncLocal(config)
 	} else {

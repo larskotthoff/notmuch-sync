@@ -19,7 +19,7 @@ func Digest(data []byte) string {
 	if startIdx != -1 {
 		searchStart := startIdx + len(pattern)
 		endIdx := bytes.Index(data[searchStart:], []byte("\n"))
-		
+
 		if endIdx != -1 {
 			endIdx += searchStart
 			// Remove the X-TUID line including the newline

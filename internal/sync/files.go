@@ -17,24 +17,24 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 	ret := make(map[string]interface{})
 	mcChanges := 0
 	dChanges := 0
-	
+
 	// Open notmuch database
 	db, err := notmuch.OpenDatabase()
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to open database: %w", err)
 	}
-	
+
 	for msgID, remoteData := range remoteChanges {
 		remoteMsg, ok := remoteData.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		remoteFiles, ok := remoteMsg["files"].([]interface{})
 		if !ok {
 			continue
 		}
-		
+
 		// Get remote filenames
 		var remoteFilenames []string
 		for _, f := range remoteFiles {
@@ -44,7 +44,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 				}
 			}
 		}
-		
+
 		// Get local message
 		msg, err := db.GetMessage(msgID, prefix)
 		if err != nil {
@@ -52,7 +52,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 			ret[msgID] = remoteData
 			continue
 		}
-		
+
 		// Get local filenames (make them relative to prefix)
 		var localFilenames []string
 		for _, filename := range msg.Filenames {
@@ -65,7 +65,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 			}
 			localFilenames = append(localFilenames, relPath)
 		}
-		
+
 		// Find missing files
 		var missingFiles []string
 		for _, remoteFile := range remoteFilenames {
@@ -80,7 +80,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 				missingFiles = append(missingFiles, remoteFile)
 			}
 		}
-		
+
 		if len(missingFiles) > 0 {
 			// Compute hashes for local files
 			var localHashes []map[string]string
@@ -92,33 +92,33 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 				if strings.HasPrefix(relPath, "/") {
 					relPath = relPath[1:]
 				}
-				
+
 				// Read file and compute hash
 				data, err := os.ReadFile(filename)
 				if err != nil {
 					log.Printf("Warning: failed to read file %s: %v", filename, err)
 					continue
 				}
-				
+
 				hash := protocol.Digest(data)
 				localHashes = append(localHashes, map[string]string{
 					"name": relPath,
 					"sha":  hash,
 				})
 			}
-			
+
 			// Process each missing file
 			for _, f := range remoteFiles {
 				fileMap, ok := f.(map[string]interface{})
 				if !ok {
 					continue
 				}
-				
+
 				fileName, ok := fileMap["name"].(string)
 				if !ok {
 					continue
 				}
-				
+
 				// Check if this file is missing
 				found := false
 				for _, missingFile := range missingFiles {
@@ -130,12 +130,12 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 				if !found {
 					continue
 				}
-				
+
 				fileSha, ok := fileMap["sha"].(string)
 				if !ok {
 					continue
 				}
-				
+
 				// Check if we have this file with a different name (moved/copied)
 				var matches []map[string]string
 				for _, localHash := range localHashes {
@@ -143,11 +143,11 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 						matches = append(matches, localHash)
 					}
 				}
-				
+
 				if len(matches) > 0 {
 					srcPath := filepath.Join(prefix, matches[0]["name"])
 					dstPath := filepath.Join(prefix, fileName)
-					
+
 					// Check if this file is also in remote changes
 					remoteFileInChanges := false
 					for _, rf := range remoteFiles {
@@ -158,7 +158,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 							}
 						}
 					}
-					
+
 					if remoteFileInChanges {
 						// Copy file
 						mcChanges++
@@ -167,7 +167,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 						} else {
 							log.Printf("Copying %s to %s", srcPath, dstPath)
 							localFilenames = append(localFilenames, fileName)
-							
+
 							// Add to database
 							if err := db.AddMessage(dstPath); err != nil {
 								log.Printf("Warning: failed to add %s to database: %v", dstPath, err)
@@ -180,7 +180,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 							log.Printf("Warning: failed to move %s to %s: %v", srcPath, dstPath, err)
 						} else {
 							log.Printf("Moving %s to %s", srcPath, dstPath)
-							
+
 							// Update local filenames
 							for i, localFile := range localFilenames {
 								if localFile == matches[0]["name"] {
@@ -188,7 +188,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 									break
 								}
 							}
-							
+
 							// Update database
 							if err := db.AddMessage(dstPath); err != nil {
 								log.Printf("Warning: failed to add %s to database: %v", dstPath, err)
@@ -202,7 +202,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 					}
 				}
 			}
-			
+
 			// Remove duplicate files that are not on remote
 			localFilesNotOnRemote := make(map[string]bool)
 			for _, localFile := range localFilenames {
@@ -217,19 +217,19 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 					localFilesNotOnRemote[localFile] = true
 				}
 			}
-			
+
 			// Check if these files are duplicates
 			for localFile := range localFilesNotOnRemote {
 				localPath := filepath.Join(prefix, localFile)
-				
+
 				// Read file and compute hash
 				data, err := os.ReadFile(localPath)
 				if err != nil {
 					continue
 				}
-				
+
 				localHash := protocol.Digest(data)
-				
+
 				// Check if this hash exists in remote files
 				isDuplicate := false
 				for _, f := range remoteFiles {
@@ -240,11 +240,11 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 						}
 					}
 				}
-				
+
 				if isDuplicate {
 					dChanges++
 					log.Printf("Removing duplicate file %s", localPath)
-					
+
 					// Remove from database first
 					if err := os.Remove(localPath); err != nil {
 						log.Printf("Warning: failed to remove %s: %v", localPath, err)
@@ -253,7 +253,7 @@ func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix 
 			}
 		}
 	}
-	
+
 	return ret, mcChanges, dChanges, nil
 }
 
@@ -263,18 +263,18 @@ func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	
+
 	// Read source file
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("failed to read source file: %w", err)
 	}
-	
+
 	// Write destination file
 	if err := os.WriteFile(dst, data, 0644); err != nil {
 		return fmt.Errorf("failed to write destination file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -284,18 +284,18 @@ func moveFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	
+
 	// Try to rename first (faster if on same filesystem)
 	if err := os.Rename(src, dst); err != nil {
 		// If rename fails, copy and remove
 		if err := copyFile(src, dst); err != nil {
 			return err
 		}
-		
+
 		if err := os.Remove(src); err != nil {
 			return fmt.Errorf("failed to remove source file: %w", err)
 		}
 	}
-	
+
 	return nil
 }
