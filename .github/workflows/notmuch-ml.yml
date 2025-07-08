@@ -74,7 +74,7 @@ jobs:
     # remove message locally
     - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
     - run: notmuch new
     - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
     - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
@@ -94,7 +94,7 @@ jobs:
     # remove message on remote
     - run: sudo -u synctest notmuch tag +deleted id:1517815399.2w186vjjm2.astroid@strange.none
     - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
-    - run: sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
+    - run: sudo -u synctest notmuch search --output=files tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
     - run: sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
     - run: sudo -u synctest notmuch new
     - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
@@ -140,9 +140,9 @@ jobs:
     - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: sudo -u synctest notmuch tag +deleted id:1517815399.2w186vjjm2.astroid@strange.none
     - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
-    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
     - run: notmuch new
-    - run: sudo -u synctest notmuch search --output=files id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
+    - run: sudo -u synctest notmuch search --output=files tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
     - run: sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
     - run: sudo -u synctest notmuch new
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
@@ -181,7 +181,7 @@ jobs:
     # no `notmuch new` after moving file there -- file already there, same checksum as copied
     - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
     - run: notmuch new
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
     - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
@@ -196,7 +196,7 @@ jobs:
     # no `notmuch new` after moving file away -- should error
     - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    - run: mv `notmuch search --output=files id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
     - run: notmuch new
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
     - run: cp /tmp/temp1.mail $GITHUB_WORKSPACE/notmuch-list/
