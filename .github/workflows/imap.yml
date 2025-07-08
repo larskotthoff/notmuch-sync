@@ -62,20 +62,19 @@ jobs:
           process_limit = 1024
         }
 
-        protocol imap {
-          mail_plugins = $mail_plugins imap_autocreate
+        mailbox Trash {
+          special_use = \Trash
+          auto = subscribe
         }
 
-        plugin {
-          # Automatically create these folders
-          autocreate = INBOX
-          autocreate2 = Trash
-
-          # Automatically subscribe to these folders
-          autosubscribe = INBOX
-          autosubscribe2 = Trash
+        namespace inbox {
+          inbox = yes
+          mailbox Trash {
+            auto = subscribe
+            special_use = \Trash
+          }
         }
-
+        
         ssl = no
         disable_plaintext_auth = no
         
