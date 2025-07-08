@@ -55,24 +55,19 @@ func (db *Database) GetRevision() (*Revision, error) {
 		return nil, fmt.Errorf("failed to get revision: %w", err)
 	}
 
-	parts := strings.Fields(string(output))
-	if len(parts) < 2 {
+	parts := strings.Split(strings.TrimSpace(string(output)), "\t")
+	if len(parts) < 3 {
 		return nil, fmt.Errorf("invalid revision output: %s", output)
 	}
 
-	rev, err := strconv.ParseInt(parts[1], 10, 64)
+	rev, err := strconv.ParseInt(parts[2], 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse revision: %w", err)
 	}
 
-	// Get UUID - read from .notmuch directory
-	uuidFile := filepath.Join(db.Path, ".notmuch", "uuid")
-	uuidData, err := os.ReadFile(uuidFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read UUID: %w", err)
-	}
+	// Get UUID from the output (second field)
+	uuid := parts[1]
 
-	uuid := strings.TrimSpace(string(uuidData))
 	// Pad UUID to 36 characters as expected by the protocol
 	if len(uuid) < 36 {
 		uuid = uuid + strings.Repeat("\x00", 36-len(uuid))
@@ -88,10 +83,10 @@ func (db *Database) GetChanges(revision *Revision, prefix string, syncFile strin
 	// Try to read previous sync state
 	if syncFile != "" {
 		if data, err := os.ReadFile(syncFile); err == nil {
-			lines := strings.Split(string(data), "\n")
-			if len(lines) >= 2 {
-				if rev, err := strconv.ParseInt(lines[0], 10, 64); err == nil {
-					uuid := strings.TrimSpace(lines[1])
+			parts := strings.Split(strings.TrimSpace(string(data)), " ")
+			if len(parts) >= 2 {
+				if rev, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
+					uuid := strings.TrimSpace(parts[1])
 					if uuid == revision.UUID {
 						sinceRev = rev
 					}
@@ -158,22 +153,37 @@ func (db *Database) GetChanges(revision *Revision, prefix string, syncFile strin
 
 // GetMessage gets a specific message by ID
 func (db *Database) GetMessage(messageID string, prefix string) (*Message, error) {
-	cmd := exec.Command("notmuch", "show", "--format=json", "--", messageID)
+	cmd := exec.Command("notmuch", "show", "--format=json", "id:"+messageID)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to show message: %w", err)
 	}
 
-	var result [][]map[string]interface{}
+	var result interface{}
 	if err := json.Unmarshal(output, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse message: %w", err)
 	}
 
-	if len(result) == 0 || len(result[0]) == 0 {
-		return nil, fmt.Errorf("message not found")
+	// Navigate the nested structure: [[[message, ...], ...], ...]
+	resultArray, ok := result.([]interface{})
+	if !ok || len(resultArray) == 0 {
+		return nil, fmt.Errorf("unexpected result structure")
 	}
 
-	msgData := result[0][0]
+	threadArray, ok := resultArray[0].([]interface{})
+	if !ok || len(threadArray) == 0 {
+		return nil, fmt.Errorf("no threads found")
+	}
+
+	messageArray, ok := threadArray[0].([]interface{})
+	if !ok || len(messageArray) == 0 {
+		return nil, fmt.Errorf("no messages found")
+	}
+
+	msgData, ok := messageArray[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("message is not a map")
+	}
 
 	// Extract tags
 	var tags []string
@@ -282,7 +292,7 @@ func (db *Database) SetMessageTags(messageID string, tags []string) error {
 
 	// Remove all current tags
 	for _, tag := range currentMsg.Tags {
-		cmd := exec.Command("notmuch", "tag", "-"+tag, "--", messageID)
+		cmd := exec.Command("notmuch", "tag", "-"+tag, "id:"+messageID)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to remove tag %s: %w", tag, err)
 		}
@@ -290,7 +300,7 @@ func (db *Database) SetMessageTags(messageID string, tags []string) error {
 
 	// Add new tags
 	for _, tag := range tags {
-		cmd := exec.Command("notmuch", "tag", "+"+tag, "--", messageID)
+		cmd := exec.Command("notmuch", "tag", "+"+tag, "id:"+messageID)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to add tag %s: %w", tag, err)
 		}
@@ -345,12 +355,12 @@ func (db *Database) DeleteMessage(messageID string, noCheck bool) error {
 		log.Printf("%s set to be removed, but not tagged 'deleted'!", messageID)
 
 		// Add and remove a dummy tag to trigger a change
-		cmd := exec.Command("notmuch", "tag", "+dummy", "--", messageID)
+		cmd := exec.Command("notmuch", "tag", "+dummy", "id:"+messageID)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to add dummy tag: %w", err)
 		}
 
-		cmd = exec.Command("notmuch", "tag", "-dummy", "--", messageID)
+		cmd = exec.Command("notmuch", "tag", "-dummy", "id:"+messageID)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to remove dummy tag: %w", err)
 		}
@@ -386,8 +396,8 @@ func RecordSync(filename string, revision *Revision) error {
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
-	// Write revision and UUID
-	content := fmt.Sprintf("%d\n%s\n", revision.Rev, revision.UUID)
+	// Write revision and UUID in Python-compatible format (space-separated)
+	content := fmt.Sprintf("%d %s", revision.Rev, revision.UUID)
 	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write sync file: %w", err)
 	}
