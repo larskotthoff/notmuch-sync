@@ -174,7 +174,7 @@ first run if one of the sides is a new, empty notmuch database.
 
 ## Limitations
 
-The size limit for most things that are communicated between hosts is $2^32$
+The size limit for most things that are communicated between hosts is $2^{32}$
 bytes, i.e. about 4GB. This includes the size of individual mail files, the
 length of changesets (message IDs, tags, files, and SHA256 checksums), and the
 length of all message IDs. This is not a fundamental limitation but simply to
