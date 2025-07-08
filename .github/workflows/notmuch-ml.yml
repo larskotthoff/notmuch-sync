@@ -150,24 +150,24 @@ jobs:
     - run: notmuch new
     - run: sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
     - run: sudo -u synctest notmuch new
-    - run: if [ X`notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    - run: if [ X`notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
     - run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
     - run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Tags synced.\" { close }"
     - run: diff `ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*)`
     - run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
-    - run: if [ X`notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    - run: if [ X`notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    - run: if [ X`notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: if [ X`notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    - run: if [ X`sudo -u synctest notmuch search tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
