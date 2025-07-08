@@ -15,6 +15,25 @@ type Transfer struct {
 // GlobalTransfer tracks global transfer statistics
 var GlobalTransfer = &Transfer{}
 
+// WriteUint32 writes a uint32 value in big-endian format
+func WriteUint32(value uint32, stream io.Writer) error {
+	if err := binary.Write(stream, binary.BigEndian, value); err != nil {
+		return fmt.Errorf("failed to write uint32: %w", err)
+	}
+	GlobalTransfer.Write += 4
+	return nil
+}
+
+// ReadUint32 reads a uint32 value in big-endian format
+func ReadUint32(stream io.Reader) (uint32, error) {
+	var value uint32
+	if err := binary.Read(stream, binary.BigEndian, &value); err != nil {
+		return 0, fmt.Errorf("failed to read uint32: %w", err)
+	}
+	GlobalTransfer.Read += 4
+	return value, nil
+}
+
 // Write writes data to a stream with a 4-byte length prefix
 func Write(data []byte, stream io.Writer) error {
 	// Write 4-byte length prefix in big-endian format

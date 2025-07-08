@@ -1,0 +1,4 @@
+notmuch-sync-go
+*.log
+*.tmp
+.DS_Store

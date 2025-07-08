@@ -3,6 +3,7 @@ package notmuch
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -302,6 +303,79 @@ func (db *Database) SetMessageTags(messageID string, tags []string) error {
 func (db *Database) AddMessage(filename string) error {
 	cmd := exec.Command("notmuch", "insert", "--no-hooks", "--", filename)
 	return cmd.Run()
+}
+
+// GetAllMessageIDs gets all message IDs from the database
+func (db *Database) GetAllMessageIDs() ([]string, error) {
+	cmd := exec.Command("notmuch", "search", "--output=messages", "*")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all message IDs: %w", err)
+	}
+	
+	var messageIDs []string
+	if err := json.Unmarshal(output, &messageIDs); err != nil {
+		return nil, fmt.Errorf("failed to parse message IDs: %w", err)
+	}
+	
+	return messageIDs, nil
+}
+
+// DeleteMessage deletes a message if it has the deleted tag or if noCheck is true
+func (db *Database) DeleteMessage(messageID string, noCheck bool) error {
+	// Get message details
+	msg, err := db.GetMessage(messageID, "")
+	if err != nil {
+		// Message doesn't exist, ignore
+		return nil
+	}
+	
+	// Check if message has "deleted" tag
+	hasDeletedTag := false
+	for _, tag := range msg.Tags {
+		if tag == "deleted" {
+			hasDeletedTag = true
+			break
+		}
+	}
+	
+	if !hasDeletedTag && !noCheck {
+		// Message doesn't have deleted tag and we're not bypassing check
+		// Set a dummy tag to trigger sync in next changeset
+		log.Printf("%s set to be removed, but not tagged 'deleted'!", messageID)
+		
+		// Add and remove a dummy tag to trigger a change
+		cmd := exec.Command("notmuch", "tag", "+dummy", "--", messageID)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to add dummy tag: %w", err)
+		}
+		
+		cmd = exec.Command("notmuch", "tag", "-dummy", "--", messageID)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to remove dummy tag: %w", err)
+		}
+		
+		return nil
+	}
+	
+	// Delete the message files
+	log.Printf("Removing %s from DB and deleting files.", messageID)
+	for _, filename := range msg.Filenames {
+		log.Printf("Removing %s.", filename)
+		
+		// Remove from notmuch database
+		cmd := exec.Command("notmuch", "remove", "--", filename)
+		if err := cmd.Run(); err != nil {
+			log.Printf("Warning: failed to remove %s from database: %v", filename, err)
+		}
+		
+		// Remove file from filesystem
+		if err := os.Remove(filename); err != nil {
+			log.Printf("Warning: failed to remove file %s: %v", filename, err)
+		}
+	}
+	
+	return nil
 }
 
 // RecordSync records the sync state

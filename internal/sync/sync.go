@@ -385,33 +385,592 @@ func InitialSync(fromStream io.Reader, toStream io.Writer) (string, map[string]i
 	return prefix, localChanges, remoteChanges, tchanges, syncFilename, updatedRevision, nil
 }
 
-// Placeholder functions that need to be implemented
-func GetMissingFiles(localChanges, remoteChanges map[string]interface{}, prefix string, moveOnChange bool) (map[string]interface{}, int, int, error) {
-	// TODO: Implement missing file detection logic
-	return make(map[string]interface{}), 0, 0, nil
+// SyncFiles synchronizes files between local and remote
+func SyncFiles(prefix string, missing map[string]interface{}, fromStream io.Reader, toStream io.Writer) (int, int, error) {
+	changes := map[string]int{
+		"messages": 0,
+		"files":    0,
+	}
+	
+	// Collect files to send and receive
+	filesToSend := make([]string, 0)
+	filesToReceive := make([]map[string]interface{}, 0)
+	
+	// Process missing files
+	for msgID, data := range missing {
+		msgData, ok := data.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		
+		files, ok := msgData["files"].([]interface{})
+		if !ok {
+			continue
+		}
+		
+		for _, f := range files {
+			fileMap, ok := f.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			
+			fileName, ok := fileMap["name"].(string)
+			if !ok {
+				continue
+			}
+			
+			fileSha, ok := fileMap["sha"].(string)
+			if !ok {
+				continue
+			}
+			
+			// Check if we have this file locally
+			localPath := filepath.Join(prefix, fileName)
+			if _, err := os.Stat(localPath); err == nil {
+				// We have the file, add to send list
+				filesToSend = append(filesToSend, fileName)
+			} else {
+				// We don't have the file, add to receive list
+				filesToReceive = append(filesToReceive, map[string]interface{}{
+					"name": fileName,
+					"sha":  fileSha,
+					"id":   msgID,
+				})
+			}
+		}
+	}
+	
+	// Exchange file lists using goroutines
+	var wg sync.WaitGroup
+	var sendErr, recvErr error
+	var remoteFilesToSend []string
+	
+	wg.Add(2)
+	
+	// Send our file list
+	go func() {
+		defer wg.Done()
+		
+		// Send number of files we're requesting
+		if err := protocol.WriteUint32(uint32(len(filesToReceive)), toStream); err != nil {
+			sendErr = err
+			return
+		}
+		
+		// Send file names we're requesting
+		for _, f := range filesToReceive {
+			fileName := f["name"].(string)
+			if err := protocol.Write([]byte(fileName), toStream); err != nil {
+				sendErr = err
+				return
+			}
+		}
+	}()
+	
+	// Receive their file list
+	go func() {
+		defer wg.Done()
+		
+		// Receive number of files they're requesting
+		numFiles, err := protocol.ReadUint32(fromStream)
+		if err != nil {
+			recvErr = err
+			return
+		}
+		
+		// Receive file names they're requesting
+		for i := 0; i < int(numFiles); i++ {
+			fileNameData, err := protocol.Read(fromStream)
+			if err != nil {
+				recvErr = err
+				return
+			}
+			remoteFilesToSend = append(remoteFilesToSend, string(fileNameData))
+		}
+	}()
+	
+	wg.Wait()
+	
+	if sendErr != nil {
+		return 0, 0, fmt.Errorf("failed to send file list: %w", sendErr)
+	}
+	if recvErr != nil {
+		return 0, 0, fmt.Errorf("failed to receive file list: %w", recvErr)
+	}
+	
+	log.Printf("Missing file names synced.")
+	
+	// Exchange files using goroutines
+	wg.Add(2)
+	
+	// Send files
+	go func() {
+		defer wg.Done()
+		for idx, fileName := range remoteFilesToSend {
+			log.Printf("%d/%d Sending %s...", idx+1, len(remoteFilesToSend), fileName)
+			filePath := filepath.Join(prefix, fileName)
+			if err := sendFile(filePath, toStream); err != nil {
+				sendErr = err
+				return
+			}
+		}
+	}()
+	
+	// Receive files
+	go func() {
+		defer wg.Done()
+		db, err := notmuch.OpenDatabase()
+		if err != nil {
+			recvErr = err
+			return
+		}
+		
+		for idx, f := range filesToReceive {
+			fileName := f["name"].(string)
+			fileSha := f["sha"].(string)
+			msgID := f["id"].(string)
+			
+			log.Printf("%d/%d Receiving %s...", idx+1, len(filesToReceive), fileName)
+			
+			dstPath := filepath.Join(prefix, fileName)
+			if err := receiveFile(dstPath, fromStream, fileSha); err != nil {
+				recvErr = err
+				return
+			}
+			
+			// Add to database
+			log.Printf("Adding %s to DB.", dstPath)
+			if err := db.AddMessage(dstPath); err != nil {
+				// Check if it's a duplicate
+				if !strings.Contains(err.Error(), "duplicate") {
+					recvErr = fmt.Errorf("failed to add message to database: %w", err)
+					return
+				}
+			} else {
+				changes["messages"]++
+				
+				// Set tags for the message
+				if msgData, ok := missing[msgID].(map[string]interface{}); ok {
+					if tags, ok := msgData["tags"].([]interface{}); ok {
+						var tagStrings []string
+						for _, tag := range tags {
+							if tagStr, ok := tag.(string); ok {
+								tagStrings = append(tagStrings, tagStr)
+							}
+						}
+						
+						log.Printf("Setting tags %v for received %s", tagStrings, msgID)
+						if err := db.SetMessageTags(msgID, tagStrings); err != nil {
+							log.Printf("Warning: failed to set tags for %s: %v", msgID, err)
+						}
+					}
+				}
+			}
+			
+			changes["files"]++
+		}
+	}()
+	
+	wg.Wait()
+	
+	if sendErr != nil {
+		return 0, 0, fmt.Errorf("failed to send files: %w", sendErr)
+	}
+	if recvErr != nil {
+		return 0, 0, fmt.Errorf("failed to receive files: %w", recvErr)
+	}
+	
+	log.Printf("Missing files synced.")
+	
+	return changes["messages"], changes["files"], nil
 }
 
-func SyncFiles(prefix string, missing map[string]interface{}, fromStream io.Reader, toStream io.Writer) (int, int, error) {
-	// TODO: Implement file synchronization logic
-	return 0, 0, nil
+// sendFile sends a file over the stream
+func sendFile(filePath string, stream io.Writer) error {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file %s: %w", filePath, err)
+	}
+	
+	return protocol.Write(data, stream)
+}
+
+// receiveFile receives a file from the stream
+func receiveFile(filePath string, stream io.Reader, expectedSha string) error {
+	data, err := protocol.Read(stream)
+	if err != nil {
+		return fmt.Errorf("failed to read file data: %w", err)
+	}
+	
+	// Verify checksum
+	actualSha := protocol.Digest(data)
+	if expectedSha != "" && actualSha != expectedSha {
+		return fmt.Errorf("checksum mismatch for file %s: expected %s, got %s", filePath, expectedSha, actualSha)
+	}
+	
+	// Check if file already exists
+	if _, err := os.Stat(filePath); err == nil {
+		// File exists, check if it's the same
+		existingData, err := os.ReadFile(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to read existing file %s: %w", filePath, err)
+		}
+		
+		existingSha := protocol.Digest(existingData)
+		if existingSha != actualSha {
+			return fmt.Errorf("file %s already exists with different content", filePath)
+		}
+		
+		// File is the same, no need to write
+		return nil
+	}
+	
+	// Create directory if needed
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory for %s: %w", filePath, err)
+	}
+	
+	// Write file
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write file %s: %w", filePath, err)
+	}
+	
+	return nil
 }
 
 func SyncDeletesLocal(fromStream io.Reader, toStream io.Writer, deleteNoCheck bool) (int, error) {
-	// TODO: Implement deletion synchronization for local mode
-	return 0, nil
+	ids := make(map[string][]string)
+	deletions := 0
+	
+	// Use goroutines to get local IDs and receive remote IDs concurrently
+	var wg sync.WaitGroup
+	var getErr, recvErr error
+	
+	wg.Add(2)
+	
+	// Get local message IDs
+	go func() {
+		defer wg.Done()
+		
+		db, err := notmuch.OpenDatabase()
+		if err != nil {
+			getErr = err
+			return
+		}
+		
+		log.Printf("Getting all message IDs from DB...")
+		localIDs, err := db.GetAllMessageIDs()
+		if err != nil {
+			getErr = err
+			return
+		}
+		
+		ids["mine"] = localIDs
+	}()
+	
+	// Receive remote message IDs
+	go func() {
+		defer wg.Done()
+		
+		log.Printf("Receiving all message IDs from remote...")
+		numIDs, err := protocol.ReadUint32(fromStream)
+		if err != nil {
+			recvErr = err
+			return
+		}
+		
+		var remoteIDs []string
+		for i := 0; i < int(numIDs); i++ {
+			idData, err := protocol.Read(fromStream)
+			if err != nil {
+				recvErr = err
+				return
+			}
+			remoteIDs = append(remoteIDs, string(idData))
+		}
+		
+		ids["theirs"] = remoteIDs
+	}()
+	
+	wg.Wait()
+	
+	if getErr != nil {
+		return 0, fmt.Errorf("failed to get local message IDs: %w", getErr)
+	}
+	if recvErr != nil {
+		return 0, fmt.Errorf("failed to receive remote message IDs: %w", recvErr)
+	}
+	
+	log.Printf("Message IDs synced.")
+	
+	// Use goroutines to send deletion IDs and process local deletions
+	wg.Add(2)
+	
+	// Send IDs to be deleted on remote
+	go func() {
+		defer wg.Done()
+		
+		// Find IDs that exist on remote but not locally
+		remoteSet := make(map[string]bool)
+		for _, id := range ids["theirs"] {
+			remoteSet[id] = true
+		}
+		
+		var toDelRemote []string
+		for _, id := range ids["theirs"] {
+			found := false
+			for _, localID := range ids["mine"] {
+				if id == localID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				toDelRemote = append(toDelRemote, id)
+			}
+		}
+		
+		log.Printf("Sending message IDs to be deleted to remote...")
+		if err := protocol.WriteUint32(uint32(len(toDelRemote)), toStream); err != nil {
+			recvErr = err
+			return
+		}
+		
+		for _, id := range toDelRemote {
+			if err := protocol.Write([]byte(id), toStream); err != nil {
+				recvErr = err
+				return
+			}
+		}
+	}()
+	
+	// Process local deletions
+	go func() {
+		defer wg.Done()
+		
+		// Find IDs that exist locally but not on remote
+		localSet := make(map[string]bool)
+		for _, id := range ids["mine"] {
+			localSet[id] = true
+		}
+		
+		var toDelLocal []string
+		for _, id := range ids["mine"] {
+			found := false
+			for _, remoteID := range ids["theirs"] {
+				if id == remoteID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				toDelLocal = append(toDelLocal, id)
+			}
+		}
+		
+		db, err := notmuch.OpenDatabase()
+		if err != nil {
+			getErr = err
+			return
+		}
+		
+		for _, msgID := range toDelLocal {
+			if err := db.DeleteMessage(msgID, deleteNoCheck); err != nil {
+				log.Printf("Warning: failed to delete message %s: %v", msgID, err)
+			} else {
+				deletions++
+			}
+		}
+	}()
+	
+	wg.Wait()
+	
+	if getErr != nil {
+		return deletions, fmt.Errorf("failed to process local deletions: %w", getErr)
+	}
+	if recvErr != nil {
+		return deletions, fmt.Errorf("failed to send remote deletions: %w", recvErr)
+	}
+	
+	return deletions, nil
 }
 
 func SyncDeletesRemote(fromStream io.Reader, toStream io.Writer, deleteNoCheck bool) (int, error) {
-	// TODO: Implement deletion synchronization for remote mode
-	return 0, nil
+	deletions := 0
+	
+	// Get all local message IDs
+	db, err := notmuch.OpenDatabase()
+	if err != nil {
+		return 0, fmt.Errorf("failed to open database: %w", err)
+	}
+	
+	localIDs, err := db.GetAllMessageIDs()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get local message IDs: %w", err)
+	}
+	
+	// Send local IDs to local side
+	if err := protocol.WriteUint32(uint32(len(localIDs)), toStream); err != nil {
+		return 0, fmt.Errorf("failed to send ID count: %w", err)
+	}
+	
+	for _, id := range localIDs {
+		if err := protocol.Write([]byte(id), toStream); err != nil {
+			return 0, fmt.Errorf("failed to send ID: %w", err)
+		}
+	}
+	
+	// Receive IDs to delete from local side
+	numToDelete, err := protocol.ReadUint32(fromStream)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read deletion count: %w", err)
+	}
+	
+	for i := 0; i < int(numToDelete); i++ {
+		idData, err := protocol.Read(fromStream)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read ID to delete: %w", err)
+		}
+		
+		msgID := string(idData)
+		if err := db.DeleteMessage(msgID, deleteNoCheck); err != nil {
+			log.Printf("Warning: failed to delete message %s: %v", msgID, err)
+		} else {
+			deletions++
+		}
+	}
+	
+	return deletions, nil
 }
 
 func SyncMBSyncLocal(prefix string, fromStream io.Reader, toStream io.Writer) error {
-	// TODO: Implement mbsync synchronization for local mode
+	// Get local mbsync file stats
+	localMBSync := make(map[string]int64)
+	
+	// Find .uidvalidity and .mbsyncstate files
+	for _, pattern := range []string{".uidvalidity", ".mbsyncstate"} {
+		err := filepath.Walk(prefix, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			
+			if strings.HasSuffix(info.Name(), pattern) {
+				relPath := strings.TrimPrefix(path, prefix)
+				if strings.HasPrefix(relPath, "/") {
+					relPath = relPath[1:]
+				}
+				localMBSync[relPath] = info.ModTime().Unix()
+			}
+			
+			return nil
+		})
+		
+		if err != nil {
+			return fmt.Errorf("failed to find %s files: %w", pattern, err)
+		}
+	}
+	
+	log.Printf("Getting local mbsync file stats...")
+	
+	// Use goroutines to exchange mbsync stats
+	var wg sync.WaitGroup
+	var sendErr, recvErr error
+	var remoteMBSync map[string]int64
+	
+	wg.Add(2)
+	
+	// Send local mbsync stats
+	go func() {
+		defer wg.Done()
+		
+		statsJSON, err := json.Marshal(localMBSync)
+		if err != nil {
+			sendErr = err
+			return
+		}
+		
+		sendErr = protocol.Write(statsJSON, toStream)
+	}()
+	
+	// Receive remote mbsync stats
+	go func() {
+		defer wg.Done()
+		
+		log.Printf("Receiving mbsync file stats from remote...")
+		statsData, err := protocol.Read(fromStream)
+		if err != nil {
+			recvErr = err
+			return
+		}
+		
+		recvErr = json.Unmarshal(statsData, &remoteMBSync)
+	}()
+	
+	wg.Wait()
+	
+	if sendErr != nil {
+		return fmt.Errorf("failed to send mbsync stats: %w", sendErr)
+	}
+	if recvErr != nil {
+		return fmt.Errorf("failed to receive mbsync stats: %w", recvErr)
+	}
+	
+	// TODO: Implement file transfer logic based on modification times
+	log.Printf("MBSync stats exchanged (file transfer not yet implemented)")
+	
 	return nil
 }
 
 func SyncMBSyncRemote(prefix string, fromStream io.Reader, toStream io.Writer) error {
-	// TODO: Implement mbsync synchronization for remote mode
+	// Get local mbsync file stats
+	localMBSync := make(map[string]int64)
+	
+	// Find .uidvalidity and .mbsyncstate files
+	for _, pattern := range []string{".uidvalidity", ".mbsyncstate"} {
+		err := filepath.Walk(prefix, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			
+			if strings.HasSuffix(info.Name(), pattern) {
+				relPath := strings.TrimPrefix(path, prefix)
+				if strings.HasPrefix(relPath, "/") {
+					relPath = relPath[1:]
+				}
+				localMBSync[relPath] = info.ModTime().Unix()
+			}
+			
+			return nil
+		})
+		
+		if err != nil {
+			return fmt.Errorf("failed to find %s files: %w", pattern, err)
+		}
+	}
+	
+	// Send local mbsync stats
+	statsJSON, err := json.Marshal(localMBSync)
+	if err != nil {
+		return fmt.Errorf("failed to marshal mbsync stats: %w", err)
+	}
+	
+	if err := protocol.Write(statsJSON, toStream); err != nil {
+		return fmt.Errorf("failed to send mbsync stats: %w", err)
+	}
+	
+	// Receive remote mbsync stats
+	remoteStatsData, err := protocol.Read(fromStream)
+	if err != nil {
+		return fmt.Errorf("failed to receive mbsync stats: %w", err)
+	}
+	
+	var remoteMBSync map[string]int64
+	if err := json.Unmarshal(remoteStatsData, &remoteMBSync); err != nil {
+		return fmt.Errorf("failed to parse remote mbsync stats: %w", err)
+	}
+	
+	// TODO: Implement file transfer logic based on modification times
+	log.Printf("MBSync stats exchanged (file transfer not yet implemented)")
+	
 	return nil
 }
