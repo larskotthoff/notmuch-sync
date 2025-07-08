@@ -62,16 +62,10 @@ jobs:
           process_limit = 1024
         }
 
-        mail_plugins {
-          quota = yes
-          trash = yes
-        }
-        quota_storage_size = 500M
-
         namespace inbox {
           inbox = yes
           mailbox Trash {
-            auto = subscribe
+            auto = create
             special_use = \Trash
           }
         }
@@ -125,7 +119,7 @@ jobs:
 
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-        sudo systemctl restart dovecot || sudo systemctl status dovecot.service
+        sudo systemctl restart dovecot
 
     - name: Configure mbsync user runner
       run: |
