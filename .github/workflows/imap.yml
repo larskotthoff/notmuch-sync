@@ -89,7 +89,7 @@ jobs:
         auth_debug = yes
         auth_verbose = yes
         EOF
-        sudo systemctl start dovecot || sudo systemctl status dovecot.service
+        sudo systemctl start dovecot
     
     - name: Seed initial emails
       run: |
@@ -125,7 +125,7 @@ jobs:
 
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
-        sudo systemctl restart dovecot
+        sudo systemctl restart dovecot || sudo systemctl status dovecot.service
 
     - name: Configure mbsync user runner
       run: |
