@@ -34,6 +34,7 @@ jobs:
         
         # Create mail directory
         sudo mkdir -p /home/imapuser/Maildir/{cur,new,tmp}
+        sudo mkdir -p /home/imapuser/Maildir/.Trash/{cur,new,tmp}
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
         
@@ -62,15 +63,11 @@ jobs:
           process_limit = 1024
         }
 
-        mailbox Trash {
-          special_use = \Trash
-          auto = subscribe
-        }
-
         namespace inbox {
           inbox = yes
-          mailbox Trash {
-            auto = subscribe
+
+          mailbox "Trash" {
+            auto = create
             special_use = \Trash
           }
         }
