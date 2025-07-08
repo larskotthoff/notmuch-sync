@@ -1023,8 +1023,8 @@ def test_sync_deletes_local_no_deleted():
     tags = ["foo"]
     mt.__iter__.return_value = iter(tags)
     mt.__len__.return_value = len(tags)
-    mt.clear = MagicMock()
     mt.add = MagicMock()
+    mt.discard = MagicMock()
     type(m2).tags = PropertyMock(return_value=mt)
     m2.frozen = MagicMock()
     m2.frozen.__enter__.return_value = None
@@ -1054,6 +1054,8 @@ def test_sync_deletes_local_no_deleted():
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
     assert m2.filenames.call_count == 0
+    mt.add.assert_called_once_with("foo")
+    mt.discard.assert_called_once_with("foo")
 
 
 def test_sync_deletes_local_no_deleted_no_check():
@@ -1195,8 +1197,8 @@ def test_sync_deletes_remote_no_deleted():
     tags = ["foo"]
     mt.__iter__.return_value = iter(tags)
     mt.__len__.return_value = len(tags)
-    mt.clear = MagicMock()
     mt.add = MagicMock()
+    mt.discard = MagicMock()
     type(m2).tags = PropertyMock(return_value=mt)
     m2.frozen = MagicMock()
     m2.frozen.__enter__.return_value = None
@@ -1226,6 +1228,8 @@ def test_sync_deletes_remote_no_deleted():
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
     assert m2.filenames.call_count == 0
+    mt.add.assert_called_once_with("foo")
+    mt.discard.assert_called_once_with("foo")
 
 
 def test_sync_deletes_remote_no_deleted_no_check():

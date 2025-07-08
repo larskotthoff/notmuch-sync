@@ -504,11 +504,11 @@ def sync_deletes_local(from_stream, to_stream, no_check=False):
                         # that something went wrong and set tags again to make
                         # it show up in next changeset to be synced back to
                         # remote
-                        tags = list(msg.tags)
+                        logger.info("%s set to be removed, but not tagged 'deleted'!", mid)
                         with msg.frozen():
-                            msg.tags.clear()
-                            for tag in tags:
-                                msg.tags.add(tag)
+                            tmp = "".join(msg.tags)
+                            msg.tags.add(tmp)
+                            msg.tags.discard(tmp)
                 except LookupError:
                     # already deleted? doesn't matter
                     pass
@@ -561,14 +561,13 @@ def sync_deletes_remote(from_stream, to_stream, no_check=False):
                         dbw.remove(f)
                         Path(f).unlink()
                 else:
-                    # not  on local, but no "deleted" tag -- assume that
+                    # not on local, but no "deleted" tag -- assume that
                     # something went wrong and set tags again to make it
                     # show up in next changeset to be synced back to local
-                    tags = list(msg.tags)
                     with msg.frozen():
-                        msg.tags.clear()
-                        for tag in tags:
-                            msg.tags.add(tag)
+                        tmp = "".join(msg.tags)
+                        msg.tags.add(tmp)
+                        msg.tags.discard(tmp)
             except LookupError:
                 # already deleted? doesn't matter
                 pass
