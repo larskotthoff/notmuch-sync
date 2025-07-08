@@ -89,7 +89,7 @@ jobs:
         auth_debug = yes
         auth_verbose = yes
         EOF
-        sudo systemctl start dovecot
+        sudo systemctl start dovecot || sudo systemctl status dovecot.service
     
     - name: Seed initial emails
       run: |
