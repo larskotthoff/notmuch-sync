@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Config holds the command-line arguments
@@ -25,6 +26,17 @@ type Config struct {
 // ParseArgs parses command-line arguments
 func ParseArgs(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("notmuch-sync", flag.ExitOnError)
+
+	// Preprocess arguments to convert double-dash to single-dash for compatibility with Python version
+	processedArgs := make([]string, len(args))
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--") && len(arg) > 2 && arg[2] != '-' {
+			// Convert --flag to -flag
+			processedArgs[i] = "-" + arg[2:]
+		} else {
+			processedArgs[i] = arg
+		}
+	}
 
 	config := &Config{}
 
@@ -49,7 +61,7 @@ func ParseArgs(args []string) (*Config, error) {
 	fs.BoolVar(&config.DeleteNoCheck, "x", false, "delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe")
 	fs.BoolVar(&config.DeleteNoCheck, "delete-no-check", false, "delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe")
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(processedArgs); err != nil {
 		return nil, err
 	}
 
