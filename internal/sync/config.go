@@ -9,6 +9,35 @@ import (
 	"strings"
 )
 
+// VerboseFlag is a custom flag type that counts occurrences
+type VerboseFlag struct {
+	Count int
+}
+
+func (v *VerboseFlag) String() string {
+	return fmt.Sprintf("%d", v.Count)
+}
+
+func (v *VerboseFlag) Set(value string) error {
+	// For boolean flags, value might be empty or "true"/"false"
+	if value == "" || value == "true" {
+		v.Count++
+	} else if value == "false" {
+		// Do nothing for false values
+	} else {
+		return fmt.Errorf("invalid boolean value %q", value)
+	}
+	return nil
+}
+
+func (v *VerboseFlag) Get() interface{} {
+	return v.Count
+}
+
+func (v *VerboseFlag) IsBoolFlag() bool {
+	return true
+}
+
 // Config holds the command-line arguments
 type Config struct {
 	Remote        string
@@ -28,24 +57,37 @@ func ParseArgs(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("notmuch-sync", flag.ExitOnError)
 
 	// Preprocess arguments to convert double-dash to single-dash for compatibility with Python version
-	processedArgs := make([]string, len(args))
-	for i, arg := range args {
+	// Also expand -vv to -v -v, -vvv to -v -v -v, etc.
+	var processedArgs []string
+	for _, arg := range args {
 		if strings.HasPrefix(arg, "--") && len(arg) > 2 && arg[2] != '-' {
 			// Convert --flag to -flag
-			processedArgs[i] = "-" + arg[2:]
+			processedArgs = append(processedArgs, "-"+arg[2:])
+		} else if strings.HasPrefix(arg, "-v") && len(arg) > 2 && strings.TrimLeft(arg[2:], "v") == "" {
+			// Expand -vv to -v -v, -vvv to -v -v -v, etc.
+			for j := 1; j < len(arg); j++ {
+				if arg[j] == 'v' {
+					processedArgs = append(processedArgs, "-v")
+				} else {
+					// If there's a non-v character after -v, treat it as a separate flag
+					processedArgs = append(processedArgs, arg)
+					break
+				}
+			}
 		} else {
-			processedArgs[i] = arg
+			processedArgs = append(processedArgs, arg)
 		}
 	}
 
 	config := &Config{}
+	verboseFlag := &VerboseFlag{}
 
 	fs.StringVar(&config.Remote, "r", "", "remote host to connect to")
 	fs.StringVar(&config.Remote, "remote", "", "remote host to connect to")
 	fs.StringVar(&config.User, "u", "", "SSH user to use")
 	fs.StringVar(&config.User, "user", "", "SSH user to use")
-	fs.IntVar(&config.Verbose, "v", 0, "increases verbosity, up to twice (ignored on remote)")
-	fs.IntVar(&config.Verbose, "verbose", 0, "increases verbosity, up to twice (ignored on remote)")
+	fs.Var(verboseFlag, "v", "increases verbosity, up to twice (ignored on remote)")
+	fs.Var(verboseFlag, "verbose", "increases verbosity, up to twice (ignored on remote)")
 	fs.BoolVar(&config.Quiet, "q", false, "do not print any output, overrides --verbose")
 	fs.BoolVar(&config.Quiet, "quiet", false, "do not print any output, overrides --verbose")
 	fs.StringVar(&config.SSHCmd, "s", "ssh -CTaxq", "SSH command to use")
@@ -64,6 +106,9 @@ func ParseArgs(args []string) (*Config, error) {
 	if err := fs.Parse(processedArgs); err != nil {
 		return nil, err
 	}
+
+	// Set verbose count from the custom flag
+	config.Verbose = verboseFlag.Count
 
 	// Set default path if not provided
 	if config.Path == "" {
