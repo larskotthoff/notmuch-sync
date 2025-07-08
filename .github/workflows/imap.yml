@@ -62,11 +62,15 @@ jobs:
           process_limit = 1024
         }
 
+        mail_plugins {
+          quota = yes
+          trash = yes
+        }
+        quota_storage_size = 500M
+
         namespace inbox {
           inbox = yes
-          separator = /
-
-          mailbox "Trash" {
+          mailbox Trash {
             auto = subscribe
             special_use = \Trash
           }
