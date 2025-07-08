@@ -1,5 +1,190 @@
 # notmuch-sync
 
+mbsync-compatible syncing of notmuch databases and mail files.
+
+## Quickstart
+
+Run as e.g. `notmuch-sync --verbose --delete --remote my.mail.server --user
+user`. This assumes that you can connect to `my.mail.server` using SSH with user
+`user` and that `notmuch-sync` is in the $PATH of that user on the remote
+machine. See `notmuch-sync --help` for commandline flags.
+
+## Main Features
+
+- sync arbitrary pairs of notmuch databases over SSH or through arbitrary custom
+  commands
+- leverage notmuch database revision numbers for efficient changeset
+  determination
+- asynchronous IO for efficient data transfer over networks
+- sync state stored as version number and UUID of notmuch database, does not
+  depend on size of notmuch database
+- compatible with [mbsync](https://isync.sourceforge.io/mbsync.html) and works
+  around some of its quirks (X-TUID...)
+- extensive unit and integration tests, with the entire archive of the
+  [notmuch mailing list](https://nmbug.notmuchmail.org/list/) and a real IMAP
+  server and mbsync
+
+
+### Sync Procedure
+
+notmuch-sync uses the revision number of the notmuch database (`lastmod` search
+term) to record the last sync and efficiently determine what has changed since
+then. The sync process works as follows:
+- The notmuch database is opened in write mode to lock it.
+- Both sides get the changes since the last sync, or all changes if there has
+  been no sync with the database UUID on the other side.
+- Tags are synced on both sides.
+  - If a message shows up in the changeset for the other side, its tags are
+    applied to the message on this side.
+  - If a message shows up in the changesets for both sides, the union of the
+    tags of the message from both sides is applied to the message on both sides.
+- The notmuch database is closed in write mode -- this unlocks it so that any
+  other processes trying to access it should only have to wait for a short time.
+- Files of existing messages are synced as follows, on both local and remote
+  sides:
+  - Files missing on this side are determined as the file names the other side
+    has, but are missing on this side.
+  - We try to find these missing files locally by comparing the SHA256
+    digests the other side sent with the SHA256 digests for the local files.
+    Computing the digest does not consider lines starting with "X-TUID: " to
+    identify identical files that only differ in the mbsync run (e.g. if
+    mbsync was run separately on both sides).
+  - Files that are thus identified as the same with different filenames are
+    - copied if both filenames are also present on the other side and in the
+      other changeset since the last sync,
+    - moved from the filename on this side to the filename on the other side if
+      they are not in our changeset or the `move_on_change` flag is set,
+    - skipped if none of the above applies and the `move_on_change` flag is not
+      set.
+    The `move_on_change` flag is true on the local machine and false on the
+    remote. It is used to disambiguate which changes to adopt and avoids
+    creating duplicate messages unnecessarily. This comes up in particular if
+    both sides independently run mbsync, which creates the same message with
+    different filenames (and different X-TUID headers) and the same UID. Simply
+    copying those messages when syncing would create duplicate files, but more
+    importantly duplicate UIDs (which mbsync stores in the filenames), which
+    would cause an error on the next mbsync run.
+  - Duplicate files for the same message that are not present on the other side
+    are deleted and removed from the notmuch database. There is a check that
+    this does not accidentally remove messages.
+  - Any files that are actually missing (don't have files with the same SHA256)
+    are transferred between the two sides.
+- The sync is recorded with notmuch database version and UUID. The revision
+  is the revision after syncing tags and unlocking the notmuch database, but
+  *before* moving/deleting/transferring/adding message files. This is to avoid
+  issues if the file sync is interrupted. It will lead to "dummy" changes that
+  have already been performed being picked up at the next sync; these will
+  result in some communication overhead but no actual changes. This behaviour is
+  deliberate to avoid losses of messages and files because of aborted syncs.
+- If `--delete` is given, all notmuch message IDs are listed on both sides and
+  the messages to be deleted determined by taking the differences between those
+  sets. Messages are only deleted if they have the "deleted" tag (see the
+  "Deleting Mails" section for further details).
+- If `--mbsync` is given, sync mbsync state files (`.uidvalidity`,
+  `.mbsyncstate`). The files are listed on both sides and ones with later
+  modification dates transferred to the other side. This assumes that both
+  machines have (at least somewhat) synchronized clocks.
+
+
+### Sync State
+
+The sync state for a remote host is saved in the `.notmuch` directory of your
+notmuch mail directory in a file of the form `notmuch-sync-<UUID>` where
+`<UUID>` is the UUID of the database synced with (not the UUID of the local
+notmuch database). The contents of the file are the revision number of the
+remote notmuch database after the last tag sync followed by a space and the UUID
+of the local notmuch database.
+
+This allows for syncs between any number of arbitrary pairs, even if host
+names/IP addresses change, only the UUIDs of the notmuch databases have to
+remain the same.
+
+Removing a sync state file starts the sync from scratch the next time
+notmuch-sync is run. This should generally be safe (i.e. end up with the two
+notmuch databases synced as you would expect), but will do a lot of unnecessary
+work and communication.
+
+
+### Differences to [muchsync](https://www.muchsync.org/)
+
+- syncs filenames and mbsync metadata
+- does not rely on shadow copy of notmuch database -- more space efficient and
+  no sqlite dependency
+- probably slower
+- does not sync notmuch configuration
+- no special handling of "unread" tag required as only changes are considered
+- [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/test/test.py),
+  [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/test/test-integration.py),
+  [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/.github/workflows/notmuch-ml.yml)
+  [tests](https://github.com/larskotthoff/notmuch-sync/blob/main/.github/workflows/imap.yml)
+
+
+### mbsync Compatibility
+
+notmuch-sync syncs mbsync state under the notmuch mail directory, which requires
+`SyncState *` for all channels and synchronized clocks. It should be safe to run
+mbsync on any of the synced copies at any time; messages that are retrieved
+through mbsync on multiple copies will be synced automatically by moving files
+accordingly.
+
+
+### Deleting Mails
+
+notmuch-sync is very careful about deleting mails. While duplicate *files* for
+the same email are always cleaned up as part of the sync (i.e. if duplicates
+have been deleted on one side, they will also be deleted on the other side),
+*messages* are never deleted unless the user explicitly requests it. To do this,
+the `--delete` flag must be given, and even then only messages that have been
+tagged "deleted" are actually deleted. To delete messages that do not have the
+"deleted" tag, you can specify `--delete-no-check` in addition to `--delete`
+(not recommended, use at your own risk).
+
+If `--delete` is given, all message IDs in the notmuch database are listed on
+both sides (this is potentially expensive). Then the difference between those
+lists is taken to determine what messages should be deleted on the local and
+remote sides. If a message ID is slated for deletion but the message does *not*
+have the "deleted" tag (on either side), notmuch-sync assumes that something has
+gone wrong and creates a dummy transaction for the message that changes nothing,
+but will make it appear in the next changeset. This will cause the message to be
+added on the side where it's missing the next time sync is run.
+
+This should work well with workflows where messages that have been tagged
+"deleted" are kept for a while and only then actually deleted by removing the
+files. Note that if the interval between tagging messages "deleted" and actually
+deleting them is smaller than the interval between syncs (e.g. one side hasn't
+been synced in a long time), deleted messages will reappear when synced. This is
+because one side will have no record of the "deleted" tag and will only see
+messages not present that are not tagged "deleted".
+
+
+## Installation and Setup
+
+Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
+You may need to install additional Python packages (in
+[requirements.txt](https://github.com/larskotthoff/notmuch-sync/blob/main/requirements.txt)).
+
+Copy `notmuch-sync` into a directory in your $PATH on all machines that you want
+to sync. No configuration is necessary; everything is picked up from notmuch.
+
+Before you run `notmuch-sync` for the first time, make sure that notmuch is set
+up correctly (in particular with the correct database path). It is not necessary
+to copy mails and tags; this will be done automatically by `notmuch-sync` on
+first run if one of the sides is a new, empty notmuch database.
+
+
+## Limitations
+
+The size limit for most things that are communicated between hosts is $2^32$
+bytes, i.e. about 4GB. This includes the size of individual mail files, the
+length of changesets (message IDs, tags, files, and SHA256 checksums), and the
+length of all message IDs. This is not a fundamental limitation but simply to
+avoid additional communication overhead and should be sufficient for most use
+cases.
+
+There are extensive tests, but there is no guarantee that notmuch-sync will
+always do the right thing.
+
+
 ## Wire Protocol
 
 The communication protocol is binary. This is what the script produces on stdout and expects on stdin.
