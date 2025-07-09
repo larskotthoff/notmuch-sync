@@ -34,7 +34,6 @@ jobs:
         
         # Create mail directory
         sudo mkdir -p /home/imapuser/Maildir/{cur,new,tmp}
-        sudo mkdir -p /home/imapuser/Maildir/.Trash/{cur,new,tmp}
         sudo chown -R imapuser:imapuser /home/imapuser/Maildir
         sudo chmod -R 700 /home/imapuser/Maildir
         
@@ -63,15 +62,6 @@ jobs:
           process_limit = 1024
         }
 
-        namespace inbox {
-          inbox = yes
-
-          mailbox "Trash" {
-            auto = create
-            special_use = \Trash
-          }
-        }
-        
         ssl = no
         disable_plaintext_auth = no
         
@@ -119,8 +109,6 @@ jobs:
         This is the third test email body.
         EOF
 
-        sudo chown -R imapuser:imapuser /home/imapuser/Maildir
-        sudo chmod -R 700 /home/imapuser/Maildir
         sudo systemctl restart dovecot
 
     - name: Configure mbsync user runner
@@ -151,7 +139,7 @@ jobs:
         SyncState *
         EOF
 
-        mkdir -p $GITHUB_WORKSPACE/mail/{INBOX,Trash}/{cur,new,tmp}
+        mkdir -p $GITHUB_WORKSPACE/mail
     
     - name: Configure mbsync user synctest
       run: |
@@ -402,7 +390,7 @@ jobs:
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
-    - run: sudo ls -Ra $GITHUB_WORKSPACE/mail /home/synctest/mail
+    - run: sudo ls -Ra $GITHUB_WORKSPACE/mail /home/synctest/
 
     # now with notmuch ML mails
     - run: |
