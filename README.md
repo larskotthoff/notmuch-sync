@@ -113,6 +113,8 @@ work and communication.
 - probably slower
 - does not sync notmuch configuration
 - no special handling of "unread" tag required as only changes are considered
+- does not run `notmuch new` automatically, neither on the local nor the remote
+  side
 - [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/test/test.py),
   [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/test/test-integration.py),
   [glorious](https://github.com/larskotthoff/notmuch-sync/blob/main/.github/workflows/notmuch-ml.yml)
