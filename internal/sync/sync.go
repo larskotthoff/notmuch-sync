@@ -392,11 +392,11 @@ func SyncFiles(prefix string, missing map[string]interface{}, fromStream io.Read
 		"files":    0,
 	}
 
-	// Collect files to send and receive
-	filesToSend := make([]string, 0)
+	// Collect files to receive
 	filesToReceive := make([]map[string]interface{}, 0)
 
 	// Process missing files
+	// The missing parameter contains files that are missing locally (files we need to receive)
 	for msgID, data := range missing {
 		msgData, ok := data.(map[string]interface{})
 		if !ok {
@@ -424,19 +424,12 @@ func SyncFiles(prefix string, missing map[string]interface{}, fromStream io.Read
 				continue
 			}
 
-			// Check if we have this file locally
-			localPath := filepath.Join(prefix, fileName)
-			if _, err := os.Stat(localPath); err == nil {
-				// We have the file, add to send list
-				filesToSend = append(filesToSend, fileName)
-			} else {
-				// We don't have the file, add to receive list
-				filesToReceive = append(filesToReceive, map[string]interface{}{
-					"name": fileName,
-					"sha":  fileSha,
-					"id":   msgID,
-				})
-			}
+			// All files in missing should be added to receive list
+			filesToReceive = append(filesToReceive, map[string]interface{}{
+				"name": fileName,
+				"sha":  fileSha,
+				"id":   msgID,
+			})
 		}
 	}
 
