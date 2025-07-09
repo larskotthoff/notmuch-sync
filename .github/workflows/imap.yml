@@ -139,7 +139,7 @@ jobs:
         SyncState *
         EOF
 
-        mkdir -p $GITHUB_WORKSPACE/mail
+        mkdir -p $GITHUB_WORKSPACE/mail/{INBOX,Trash}/{cur,new,tmp}
     
     - name: Configure mbsync user synctest
       run: |
