@@ -212,7 +212,7 @@ def initial_sync(from_stream, to_stream):
 
         asyncio.run(sync_uuids())
         logger.info("UUIDs synced.")
-        fname = os.path.join(prefix, ".notmuch", f"notmuch-sync-{uuids["theirs"]}")
+        fname = os.path.join(prefix, ".notmuch", "notmuch-sync-" + uuids["theirs"])
 
         changes = {}
         logger.info("Computing local changes...")
