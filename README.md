@@ -1,5 +1,10 @@
 # notmuch-sync
 
+![Python Tests](https://github.com/larskotthoff/notmuch-sync/actions/workflows/python.yml/badge.svg)
+![Integration Tests](https://github.com/larskotthoff/notmuch-sync/actions/workflows/notmuch-ml.yml/badge.svg)
+![Integration Tests with IMAP server](https://github.com/larskotthoff/notmuch-sync/actions/workflows/imap.yml/badge.svg)
+![Security Scanner](https://github.com/larskotthoff/notmuch-sync/actions/workflows/codeql.yml/badge.svg)
+
 mbsync-compatible syncing of notmuch databases and mail files.
 
 ## Quickstart
