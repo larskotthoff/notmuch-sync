@@ -198,6 +198,10 @@ The folder structure under the notmuch mail directory is assumed to be the same
 on all copies, in particular this means that the mbsync configuration should be
 the same as well.
 
+Changes to the notmuch database and mail files while notmuch-sync is running,
+e.g. moving files, will result in error messages. It is safe to simply rerun
+notmuch-sync when this happens.
+
 Please note that running `notmuch compact` changes the UUID of the database.
 This means that subsequent syncs will abort with an error message.
 
