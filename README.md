@@ -7,7 +7,13 @@ mbsync-compatible syncing of notmuch databases and mail files.
 Run as e.g. `notmuch-sync --verbose --delete --remote my.mail.server --user
 user`. This assumes that you can connect to `my.mail.server` using SSH with user
 `user` and that `notmuch-sync` is in the $PATH of that user on the remote
-machine. See `notmuch-sync --help` for commandline flags.
+machine. See `notmuch-sync --help` for commandline flags. Notmuch databases need
+to be set up on both sides; notmuch-sync does not run `notmuch new`.
+
+If you're starting with an empty notmuch database on one side, the first sync
+might take a long time. The second sync will, too, as it essentially verifies
+everything that was done during the first sync. Subsequent syncs should be much
+faster, unless there are a lot of changes.
 
 ## Main Features
 
@@ -182,6 +188,10 @@ length of changesets (message IDs, tags, files, and SHA256 checksums), and the
 length of all message IDs. This is not a fundamental limitation but simply to
 avoid additional communication overhead and should be sufficient for most use
 cases.
+
+The folder structure under the notmuch mail directory is assumed to be the same
+on all copies, in particular this means that the mbsync configuration should be
+the same as well.
 
 There are extensive tests, but there is no guarantee that notmuch-sync will
 always do the right thing.
