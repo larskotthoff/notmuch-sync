@@ -116,7 +116,7 @@ work and communication.
 - syncs filenames and mbsync metadata
 - does not rely on shadow copy of notmuch database -- more space efficient and
   no sqlite dependency
-- probably slower
+- probably slower and more memory-hungry
 - does not sync notmuch configuration
 - no special handling of "unread" tag required as only changes are considered
 - does not run `notmuch new` automatically, neither on the local nor the remote
@@ -192,6 +192,9 @@ cases.
 The folder structure under the notmuch mail directory is assumed to be the same
 on all copies, in particular this means that the mbsync configuration should be
 the same as well.
+
+Please note that running `notmuch compact` changes the UUID of the database.
+This means that subsequent syncs will abort with an error message.
 
 There are extensive tests, but there is no guarantee that notmuch-sync will
 always do the right thing.
