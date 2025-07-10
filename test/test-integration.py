@@ -199,17 +199,21 @@ def test_sync_tags_files_verbose(shell):
             assert 'Tags synced.' in out[11]
             assert any('Sending file names missing on local...' in o for o in out)
             assert any('Receiving file names missing on remote...' in o for o in out)
-            assert 'Missing file names synced.' in out[14]
+            assert any('Requesting hashes from remote...' in o for o in out)
+            assert any('Receiving requested hashes from remote...' in o for o in out)
+            assert any('Hashing requested files and sending to remote...' in o for o in out)
+            assert any('Receiving hashes from remote...' in o for o in out)
+            assert 'Missing file names synced.' in out[18]
             assert any('1/1 Sending mails/simple.eml...' in o for o in out)
             assert any('1/1 Receiving mails/attachment.eml...' in o for o in out)
             assert any(f'Adding {local}/mails/attachment.eml to DB.' in o for o in out)
             assert any("Setting tags ['attachment', 'remote'] for received 874llc2bkp.fsf@curie.anarc.at." in o for o in out)
-            assert 'Missing files synced.' in out[19]
-            assert 'Writing last sync revision 9.' in out[20]
-            assert 'Getting change numbers from remote...' in out[21]
-            assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[22]
-            assert 'remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[23]
-            assert '9426/4616 bytes received from/sent to remote.' in out[24]
+            assert 'Missing files synced.' in out[23]
+            assert 'Writing last sync revision 9.' in out[24]
+            assert 'Getting change numbers from remote...' in out[25]
+            assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[26]
+            assert 'remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[27]
+            assert '9094/4284 bytes received from/sent to remote.' in out[28]
 
 
 def test_sync_tags_files(shell):

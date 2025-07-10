@@ -113,10 +113,9 @@ def get_changes(db, revision, prefix, sync_file):
         pass
 
     logger.info("Previous sync revision %s, current revision %s.", rev_prev, revision.rev)
-    return {msg.messageid: {"tags": list(msg.tags), "files": [
-        {"name": str(f).removeprefix(prefix),
-         "sha": digest(Path(f).read_bytes())} for f in msg.filenames()
-        ]} for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
+    return {msg.messageid: {"tags": list(msg.tags),
+                            "files": [str(f).removeprefix(prefix) for f in msg.filenames()]}
+                            for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
 def sync_tags(db, changes_mine, changes_theirs):
@@ -240,7 +239,7 @@ def initial_sync(from_stream, to_stream):
     return (prefix, changes["mine"], changes["theirs"], tchanges, fname, revision)
 
 
-def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False):
+def get_missing_files(changes_mine, changes_theirs, prefix, from_stream, to_stream, move_on_change=False):
     """
     Determine which files are missing locally compared to the remote, and handle
     file moves/copies based on SHA256 checksums. Delete any files that aren't
@@ -251,6 +250,8 @@ def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False
         changes_mine (dict): Local changes.
         changes_theirs (dict): Remote changes.
         prefix (str): Prefix path for filenames (notmuch config database.path).
+        from_stream: Stream to read from the remote.
+        to_stream: Stream to write to the remote.
         move_on_change: Whether to move file that has local and remote changes.
         This flag is used to prevent infinite loops where local has one file
         name and remote another file name (e.g. when running mbsync independently).
@@ -262,33 +263,93 @@ def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False
     ret = {}
     mcchanges = 0
     dchanges = 0
+    hashes = {}
     with notmuch2.Database() as db:
+        # check which files we need to get digests for to determine if they've
+        # been moved/copied
+        hashes["req_mine"] = []
+        for mid in changes_theirs:
+            try:
+                msg = db.find(mid)
+                if msg.ghost:
+                    continue
+                fnames_theirs = changes_theirs[mid]["files"]
+                fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
+                missing_mine = set(fnames_theirs) - set(fnames_mine)
+                if len(missing_mine) > 0:
+                    hashes["req_mine"].extend(fnames_theirs)
+            except LookupError:
+                continue
+
+        async def send_hashes_req():
+            logger.info("Requesting hashes from remote...")
+            logger.debug("Requesting hashes %s", hashes["req_mine"])
+            to_stream.write(struct.pack("!I", len(hashes["req_mine"])))
+            transfer["write"] += 4
+            to_stream.flush()
+            for f in hashes["req_mine"]:
+                write(f.encode("utf-8"), to_stream)
+
+        async def recv_hashes_req():
+            logger.info("Receiving requested hashes from remote...")
+            size_data = from_stream.read(4)
+            transfer["read"] += 4
+            nfiles = struct.unpack("!I", size_data)[0]
+            hashes["req_theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
+            logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
+
+        async def sync_reqs():
+            await asyncio.gather(send_hashes_req(), recv_hashes_req())
+
+        asyncio.run(sync_reqs())
+
+        async def send_hashes():
+            logger.info("Hashing requested files and sending to remote...")
+            tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
+            to_stream.write(struct.pack("!I", len(tmp)))
+            transfer["write"] += 4
+            to_stream.flush()
+            for h in tmp:
+                write(h.encode("utf-8"), to_stream)
+
+        async def receive_hashes():
+            logger.info("Receiving hashes from remote...")
+            size_data = from_stream.read(4)
+            transfer["read"] += 4
+            nhashes = struct.unpack("!I", size_data)[0]
+            tmp = [ read(from_stream).decode("utf-8") for _ in range(nhashes) ]
+            hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
+
+        async def sync():
+            await asyncio.gather(send_hashes(), receive_hashes())
+
+        asyncio.run(sync())
+
+        # now actually determine changes and move/copy
         for mid in changes_theirs:
             try:
                 msg = db.find(mid)
                 if msg.ghost:
                     ret[mid] = changes_theirs[mid]
                     continue
-                fnames_theirs = [ f["name"] for f in changes_theirs[mid]["files"] ]
+                fnames_theirs = changes_theirs[mid]["files"]
                 fnames_mine = [ str(f).removeprefix(prefix) for f in msg.filenames() ]
-                missing_mine = [ f for f in fnames_theirs if f not in fnames_mine ]
+                missing_mine = set(fnames_theirs) - set(fnames_mine)
                 if len(missing_mine) > 0:
-                    hashes_mine = [{"name": str(f).removeprefix(prefix),
-                                    "sha": digest(Path(f).read_bytes())}
-                                    for f in msg.filenames()]
+                    hashes_mine = {str(f).removeprefix(prefix): digest(Path(f).read_bytes()) for f in msg.filenames()}
                     for f in changes_theirs[mid]["files"]:
-                        if f["name"] in missing_mine:
+                        if f in missing_mine:
                             # check if it has been moved/copied
-                            matches = [ x for x in hashes_mine if f["sha"] == x["sha"] ]
+                            matches = [ x[0] for x in hashes_mine.items() if hashes["theirs"][f] == x[1] ]
                             if len(matches) > 0:
-                                src = os.path.join(prefix, matches[0]["name"])
-                                dst = os.path.join(prefix, f["name"])
+                                src = os.path.join(prefix, matches[0])
+                                dst = os.path.join(prefix, f)
                                 if matches[0] in changes_theirs[mid]["files"]:
                                     mcchanges += 1
                                     logger.info("Copying %s to %s.", src, dst)
                                     Path(dst).parent.mkdir(parents=True, exist_ok=True)
                                     shutil.copy(src, dst)
-                                    fnames_mine.append(f["name"])
+                                    fnames_mine.append(f)
                                     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
                                         dbw.add(dst)
                                 elif mid not in changes_mine or move_on_change:
@@ -296,16 +357,16 @@ def get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False
                                     logger.info("Moving %s to %s.", src, dst)
                                     Path(dst).parent.mkdir(parents=True, exist_ok=True)
                                     shutil.move(src, dst)
-                                    fnames_mine.append(f["name"])
-                                    fnames_mine.remove(matches[0]["name"])
+                                    fnames_mine.append(f)
+                                    fnames_mine.remove(matches[0])
                                     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
                                         dbw.add(dst)
                                         logger.info("Removing %s from DB.", src)
                                         dbw.remove(src)
-                                missing_mine.remove(f["name"])
+                                missing_mine.remove(f)
                 # check which ones are still missing
                 if len(missing_mine) > 0:
-                    ret[mid] = {"files": [f for f in changes_theirs[mid]["files"] if f["name"] in missing_mine]}
+                    ret[mid] = {"files": [f for f in changes_theirs[mid]["files"] if f in missing_mine]}
 
                 # delete any files that are not there remotely after copy/move
                 if mid not in changes_mine:
@@ -337,7 +398,7 @@ def send_file(fname, stream):
         write(f.read(), stream)
 
 
-def recv_file(fname, stream, sha=None, overwrite_raise=True):
+def recv_file(fname, stream, overwrite_raise=True):
     """
     Receive a file with a 4-byte length prefix from a stream and write it to
     disk, validating its checksum.
@@ -345,7 +406,6 @@ def recv_file(fname, stream, sha=None, overwrite_raise=True):
     Args:
         fname (str): Destination file path.
         stream: Readable stream.
-        sha (str): Expected SHA256 checksum.
         overwrite_raise: Raise error if existing file would be overwritten.
 
     Raises:
@@ -353,13 +413,11 @@ def recv_file(fname, stream, sha=None, overwrite_raise=True):
         checksum does not match expected.
     """
     content = read(stream)
-    sha_mine = digest(content)
     if Path(fname).exists() and overwrite_raise:
+        sha_mine = digest(content)
         sha_exists = digest(Path(fname).read_bytes())
         if sha_exists != sha_mine:
             raise ValueError(f"Set to receive '{fname}', but already exists with different content!")
-    if sha and sha_mine != sha:
-        raise ValueError(f"Checksum of received file '{fname}' ({sha_mine}) does not match expected ({sha})!")
     Path(fname).parent.mkdir(parents=True, exist_ok=True)
     with open(fname, "wb") as f:
         f.write(content)
@@ -379,7 +437,7 @@ def sync_files(prefix, missing, from_stream, to_stream):
         tuple: (number of locally added messages, number of locally added files)
     """
     files = {}
-    files["mine"] = [ f | {"id": mid} for mid in missing for f in missing[mid]["files"] ]
+    files["mine"] = [ {"name": f, "id": mid} for mid in missing for f in missing[mid]["files"] ]
     changes = {"files": len(files["mine"]), "messages": 0}
 
     async def send_fnames():
@@ -413,7 +471,7 @@ def sync_files(prefix, missing, from_stream, to_stream):
         for idx, f in enumerate(files["mine"]):
             logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
             dst = os.path.join(prefix, f["name"])
-            recv_file(dst, from_stream, f["sha"])
+            recv_file(dst, from_stream)
             with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
                 logger.info("Adding %s to DB.", dst)
                 msg, dup = dbw.add(dst)
@@ -676,7 +734,7 @@ def sync_remote(args):
         args: Parsed command-line arguments.
     """
     prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(sys.stdin.buffer, sys.stdout.buffer)
-    missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=False)
+    missing, fchanges, dfchanges = get_missing_files(changes_mine, changes_theirs, prefix, sys.stdin.buffer, sys.stdout.buffer, move_on_change=False)
     rmessages, rfiles = sync_files(prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
     # record previous sync version after transferring files -- if something goes
     # wrong while transferring files, we'd miss any new files during the next
@@ -730,7 +788,7 @@ def sync_local(args):
         try:
             prefix, changes_mine, changes_theirs, tchanges, sync_fname, rev = initial_sync(from_remote, to_remote)
             logger.debug("Local changes %s, remote changes %s.", changes_mine, changes_theirs)
-            missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix, move_on_change=True)
+            missing, fchanges, dfchanges  = get_missing_files(changes_mine, changes_theirs, prefix, from_remote, to_remote, move_on_change=True)
             logger.debug("Local missing files %s.", missing)
             rmessages, rfiles = sync_files(prefix, missing, from_remote, to_remote)
             # record previous sync version after transferring files -- if something goes

@@ -207,6 +207,14 @@ The communication protocol is binary. This is what the script produces on stdout
 - 36 bytes UUID of notmuch database
 - 4 bytes unsigned int length of JSON-encoded changes
 - JSON-encoded changes
+- 4 bytes unsigned int number of files requested hashes for from other side
+- for each of the hashes requested from the other side:
+    - 4 bytes unsigned int length of file name
+    - file name
+- 4 bytes unsigned int number of hashes to be sent back
+- for each of the hashes requested by the other side:
+    - 4 bytes unsigned int length of hash
+    - hash
 - 4 bytes unsigned int number of files requested
 - for each of the files requested from the other side:
     - 4 bytes unsigned int length of file name
