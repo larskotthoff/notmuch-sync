@@ -55,6 +55,7 @@ def test_changes_first_sync():
 
     db = lambda: None
     rev = lambda: None
+    rev.rev = 123
     db.messages = MagicMock(return_value=[mm])
 
     # this is only to get a filename that is guaranteed to be unique -- the file
