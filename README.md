@@ -56,7 +56,7 @@ then. The sync process works as follows:
   - Files missing on this side are determined as the file names the other side
     has, but are missing on this side.
   - We try to find these missing files locally by comparing the SHA256
-    digests the other side sent with the SHA256 digests for the local files.
+    digests from the other side with the SHA256 digests for the local files.
     Computing the digest does not consider lines starting with "X-TUID: " to
     identify identical files that only differ in the mbsync run (e.g. if
     mbsync was run separately on both sides).
