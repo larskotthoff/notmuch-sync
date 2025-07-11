@@ -49,8 +49,6 @@ then. The sync process works as follows:
     applied to the message on this side.
   - If a message shows up in the changesets for both sides, the union of the
     tags of the message from both sides is applied to the message on both sides.
-- The notmuch database is closed in write mode -- this unlocks it so that any
-  other processes trying to access it should only have to wait for a short time.
 - Files of existing messages are synced as follows, on both local and remote
   sides:
   - Files missing on this side are determined as the file names the other side
@@ -80,13 +78,9 @@ then. The sync process works as follows:
     this does not accidentally remove messages.
   - Any files that are actually missing (don't have files with the same SHA256)
     are transferred between the two sides.
-- The sync is recorded with notmuch database version and UUID. The revision
-  is the revision after syncing tags and unlocking the notmuch database, but
-  *before* moving/deleting/transferring/adding message files. This is to avoid
-  issues if the file sync is interrupted. It will lead to "dummy" changes that
-  have already been performed being picked up at the next sync; these will
-  result in some communication overhead but no actual changes. This behaviour is
-  deliberate to avoid losses of messages and files because of aborted syncs.
+- The sync is recorded with notmuch database version and UUID.
+- The notmuch database is closed in write mode -- this unlocks it so that any
+  other processes trying to access it should only have to wait for a short time.
 - If `--delete` is given, all notmuch message IDs are listed on both sides and
   the messages to be deleted determined by taking the differences between those
   sets. Messages are only deleted if they have the "deleted" tag (see the

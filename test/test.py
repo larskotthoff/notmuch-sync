@@ -125,30 +125,21 @@ def test_initial_sync():
     rev.rev = 123
     rev.uuid = b'00000000-0000-0000-0000-000000000000'
     db.revision = MagicMock(return_value=rev)
-    db.default_path = MagicMock(return_value=gettempdir())
-
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
 
     fname = os.path.join(gettempdir(), ".notmuch", "notmuch-sync-00000000-0000-0000-0000-000000000001")
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch.object(ns, "get_changes", return_value=[]) as gc:
-            istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
-            ostream = io.BytesIO()
-            prefix, mine, theirs, nchanges, syncname, rev = ns.initial_sync(istream, ostream)
-            assert mine == []
-            assert theirs == []
-            assert nchanges == 0
-            assert syncname == fname
-            assert rev.rev == 123
-            assert rev.uuid == b"00000000-0000-0000-0000-000000000000"
-            assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
+    with patch.object(ns, "get_changes", return_value=[]) as gc:
+        istream = io.BytesIO(b"00000000-0000-0000-0000-000000000001\x00\x00\x00\x02[]")
+        ostream = io.BytesIO()
+        mine, theirs, nchanges, syncname = ns.initial_sync(db, prefix, istream, ostream)
+        assert mine == []
+        assert theirs == []
+        assert nchanges == 0
+        assert syncname == fname
+        assert b"00000000-0000-0000-0000-000000000000\x00\x00\x00\x02[]" == ostream.getvalue()
 
-            gc.assert_called_once_with(db, rev, prefix, fname)
+        gc.assert_called_once_with(db, rev, prefix, fname)
 
-    assert db.revision.call_count == 2
-    db.default_path.assert_called_once()
+    assert db.revision.call_count == 1
 
 
 def test_record_sync():
@@ -355,16 +346,10 @@ def test_sync_server(monkeypatch):
 
 def test_missing_files_empty():
     db = lambda: None
-
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-        ostream = io.BytesIO()
-        assert ({}, 0, 0) == ns.get_missing_files({}, {}, prefix, istream, ostream)
-        assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
+    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
+    ostream = io.BytesIO()
+    assert ({}, 0, 0) == ns.get_missing_files(db, prefix, {}, {}, istream, ostream)
+    assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
 
 
 def test_missing_files_new():
@@ -382,19 +367,14 @@ def test_missing_files_new():
     db.find = MagicMock()
     db.find.side_effect = effect()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     changes = {"foo": {"tags": ["foo"], "files": ["foofile"]},
                "bar": {"tags": ["bar"], "files": ["barfile"]}}
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-        ostream = io.BytesIO()
-        exp = {"bar": {"tags": ["bar"], "files": ["barfile"]}}
-        assert (exp, 0, 0) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-        assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
+    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
+    ostream = io.BytesIO()
+    exp = {"bar": {"tags": ["bar"], "files": ["barfile"]}}
+    assert (exp, 0, 0) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+    assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
 
     assert m.filenames.call_count == 2
     assert db.find.mock_calls == [call('foo'), call('bar'), call('foo'), call('bar')]
@@ -407,18 +387,13 @@ def test_missing_files_ghost():
 
     db.find = MagicMock(return_value=m)
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     changes = {"bar": {"tags": ["bar"], "files": ["foo"]}}
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-        ostream = io.BytesIO()
-        exp = {"bar": {"tags": ["bar"], "files": ["foo"]}}
-        assert (exp, 0, 0) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-        assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
+    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
+    ostream = io.BytesIO()
+    exp = {"bar": {"tags": ["bar"], "files": ["foo"]}}
+    assert (exp, 0, 0) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+    assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == ostream.getvalue()
 
     assert db.find.mock_calls == [ call("bar"), call("bar") ]
 
@@ -432,31 +407,26 @@ def test_missing_files_inconsistent_no_move():
     db.add = MagicMock(return_value=(m, True))
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("shutil.move") as sm:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+                ostream = io.BytesIO()
+                m.filenames = MagicMock(return_value=[f1.name])
+                f1.write("mail one")
+                f1.flush()
+                f2.write("mail one")
+                f2.flush()
+                f2name = f2.name.removeprefix(prefix)
+                changes_mine = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
+                changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
+                assert ({}, 0, 0) == ns.get_missing_files(db, prefix, changes_mine, changes_theirs, istream, ostream, move_on_change=False)
+                assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.move") as sm:
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                    ostream = io.BytesIO()
-                    m.filenames = MagicMock(return_value=[f1.name])
-                    f1.write("mail one")
-                    f1.flush()
-                    f2.write("mail one")
-                    f2.flush()
-                    f2name = f2.name.removeprefix(prefix)
-                    changes_mine = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
-                    changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
-                    assert ({}, 0, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix, istream, ostream, move_on_change=False)
-                    assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
-
-                    assert sm.call_count == 0
-                    assert db.add.call_count == 0
-                    assert db.remove.call_count == 0
-                    assert db.find.mock_calls == [ call("foo"), call("foo") ]
+                assert sm.call_count == 0
+                assert db.add.call_count == 0
+                assert db.remove.call_count == 0
+                assert db.find.mock_calls == [ call("foo"), call("foo") ]
 
     assert m.filenames.call_count == 3
 
@@ -470,31 +440,26 @@ def test_missing_files_inconsistent_move():
     db.add = MagicMock(return_value=(m, True))
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("shutil.move") as sm:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+                ostream = io.BytesIO()
+                m.filenames = MagicMock(return_value=[f1.name])
+                f1.write("mail one")
+                f1.flush()
+                f2.write("mail one")
+                f2.flush()
+                f2name = f2.name.removeprefix(prefix)
+                changes_mine = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
+                changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
+                assert ({}, 1, 0) == ns.get_missing_files(db, prefix, changes_mine, changes_theirs, istream, ostream, move_on_change=True)
+                assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.move") as sm:
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                    ostream = io.BytesIO()
-                    m.filenames = MagicMock(return_value=[f1.name])
-                    f1.write("mail one")
-                    f1.flush()
-                    f2.write("mail one")
-                    f2.flush()
-                    f2name = f2.name.removeprefix(prefix)
-                    changes_mine = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
-                    changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
-                    assert ({}, 1, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix, istream, ostream, move_on_change=True)
-                    assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
-
-                    sm.assert_called_once_with(f1.name, f2.name)
-                    db.add.assert_called_once_with(f2.name)
-                    db.remove.assert_called_once_with(f1.name)
-                    assert m.filenames.call_count == 3
+                sm.assert_called_once_with(f1.name, f2.name)
+                db.add.assert_called_once_with(f2.name)
+                db.remove.assert_called_once_with(f1.name)
+                assert m.filenames.call_count == 3
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
 
@@ -508,28 +473,23 @@ def test_missing_files_moved():
     db.add = MagicMock(return_value=(m, True))
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("shutil.move") as sm:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+                ostream = io.BytesIO()
+                m.filenames = MagicMock(return_value=[f1.name])
+                f1.write("mail one")
+                f1.flush()
+                f2name = f2.name.removeprefix(prefix)
+                changes = {"foo": {"tags": ["foo"], "files": [f2name]}}
+                assert ({}, 1, 0) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+                assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.move") as sm:
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                    ostream = io.BytesIO()
-                    m.filenames = MagicMock(return_value=[f1.name])
-                    f1.write("mail one")
-                    f1.flush()
-                    f2name = f2.name.removeprefix(prefix)
-                    changes = {"foo": {"tags": ["foo"], "files": [f2name]}}
-                    assert ({}, 1, 0) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-                    assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
-
-                    sm.assert_called_once_with(f1.name, f2.name)
-                    db.add.assert_called_once_with(f2.name)
-                    db.remove.assert_called_once_with(f1.name)
-                    assert m.filenames.call_count == 3
+                sm.assert_called_once_with(f1.name, f2.name)
+                db.add.assert_called_once_with(f2.name)
+                db.remove.assert_called_once_with(f1.name)
+                assert m.filenames.call_count == 3
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
 
@@ -542,28 +502,23 @@ def test_missing_files_copied():
     db.find = MagicMock(return_value=m)
     db.add = MagicMock(return_value=(m, True))
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     # this is only to get a filename that is guaranteed to be unique
     f = NamedTemporaryFile(mode="r", prefix="notmuch-sync-test-tmp-")
     f.close()
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                ostream = io.BytesIO()
-                m.filenames = MagicMock(return_value=[f1.name])
-                f1.write("mail one")
-                f1.flush()
-                fname = f.name.removeprefix(prefix)
-                f1name = f1.name.removeprefix(prefix)
-                changes = {"foo": {"tags": ["foo"], "files": [f1name, fname]}}
-                assert ({}, 1, 0) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-                assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(fname)) + fname.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
+    with patch("shutil.copy") as sc:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+            ostream = io.BytesIO()
+            m.filenames = MagicMock(return_value=[f1.name])
+            f1.write("mail one")
+            f1.flush()
+            fname = f.name.removeprefix(prefix)
+            f1name = f1.name.removeprefix(prefix)
+            changes = {"foo": {"tags": ["foo"], "files": [f1name, fname]}}
+            assert ({}, 1, 0) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+            assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(fname)) + fname.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
 
-                sc.assert_called_once_with(f1.name, f.name)
+            sc.assert_called_once_with(f1.name, f.name)
 
     assert m.filenames.call_count == 3
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
@@ -577,29 +532,24 @@ def test_missing_files_added():
 
     db.find = MagicMock(return_value=m)
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("shutil.copy") as sc:
+        with patch("shutil.move") as sm:
+            with patch("pathlib.Path.unlink") as pu:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\x00\x00\x00\x03abc")
+                    ostream = io.BytesIO()
+                    m.filenames = MagicMock(return_value=[f1.name])
+                    f1.write("mail one")
+                    f1.flush()
+                    f1name = f1.name.removeprefix(prefix)
+                    changes = {"foo": {"tags": ["foo"], "files": [f1name, "bar"]}}
+                    exp = {"foo": {"files": ["bar"]}}
+                    assert (exp, 0, 0) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+                    assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + b"\x00\x00\x00\x03bar\x00\x00\x00\x00" == ostream.getvalue()
+                    assert pu.call_count == 0
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with patch("shutil.move") as sm:
-                with patch("pathlib.Path.unlink") as pu:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\x00\x00\x00\x03abc")
-                        ostream = io.BytesIO()
-                        m.filenames = MagicMock(return_value=[f1.name])
-                        f1.write("mail one")
-                        f1.flush()
-                        f1name = f1.name.removeprefix(prefix)
-                        changes = {"foo": {"tags": ["foo"], "files": [f1name, "bar"]}}
-                        exp = {"foo": {"files": ["bar"]}}
-                        assert (exp, 0, 0) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-                        assert b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + b"\x00\x00\x00\x03bar\x00\x00\x00\x00" == ostream.getvalue()
-                        assert pu.call_count == 0
-
-                assert sm.call_count == 0
-                assert sc.call_count == 0
+            assert sm.call_count == 0
+            assert sc.call_count == 0
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
     assert m.filenames.call_count == 3
@@ -613,30 +563,25 @@ def test_missing_files_delete():
     db.find = MagicMock(return_value=m)
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with patch("shutil.move") as sm:
-                with patch("pathlib.Path.unlink") as pu:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-                            ostream = io.BytesIO()
-                            m.filenames = MagicMock(return_value=[f1.name, f2.name])
-                            f1.write("mail one")
-                            f1.flush()
-                            f2.write("mail one")
-                            f2.flush()
-                            changes = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
-                            assert ({}, 0, 1) == ns.get_missing_files({}, changes, prefix, istream, ostream)
-                            assert b"\x00\x00\x00\x00\x00\x00\x00\x00"
-                            db.remove.assert_called_once_with(f2.name)
-                            pu.assert_called_once()
-                assert sm.call_count == 0
-                assert sc.call_count == 0
+    with patch("shutil.copy") as sc:
+        with patch("shutil.move") as sm:
+            with patch("pathlib.Path.unlink") as pu:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
+                        ostream = io.BytesIO()
+                        m.filenames = MagicMock(return_value=[f1.name, f2.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        changes = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
+                        assert ({}, 0, 1) == ns.get_missing_files(db, prefix, {}, changes, istream, ostream)
+                        assert b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                        db.remove.assert_called_once_with(f2.name)
+                        pu.assert_called_once()
+            assert sm.call_count == 0
+            assert sc.call_count == 0
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
     assert m.filenames.call_count == 2
@@ -650,30 +595,25 @@ def test_missing_files_delete_changed():
     db.find = MagicMock(return_value=m)
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.copy") as sc:
-            with patch("shutil.move") as sm:
-                with patch("pathlib.Path.unlink") as pu:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
-                            ostream = io.BytesIO()
-                            m.filenames = MagicMock(return_value=[f1.name, f2.name])
-                            f1.write("mail one")
-                            f1.flush()
-                            f2.write("mail one")
-                            f2.flush()
-                            changes_theirs = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
-                            changes_mine = {"foo": {"tags": ["foo"], "files": [f2.name.removeprefix(prefix)]}}
-                            assert ({}, 0, 0) == ns.get_missing_files(changes_mine, changes_theirs, prefix, istream, ostream)
-                            assert b"\x00\x00\x00\x00\x00\x00\x00\x00"
-                            assert pu.call_count == 0
-                assert sm.call_count == 0
-                assert sc.call_count == 0
+    with patch("shutil.copy") as sc:
+        with patch("shutil.move") as sm:
+            with patch("pathlib.Path.unlink") as pu:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
+                        ostream = io.BytesIO()
+                        m.filenames = MagicMock(return_value=[f1.name, f2.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        changes_theirs = {"foo": {"tags": ["foo"], "files": [f1.name.removeprefix(prefix)]}}
+                        changes_mine = {"foo": {"tags": ["foo"], "files": [f2.name.removeprefix(prefix)]}}
+                        assert ({}, 0, 0) == ns.get_missing_files(db, prefix, changes_mine, changes_theirs, istream, ostream)
+                        assert b"\x00\x00\x00\x00\x00\x00\x00\x00"
+                        assert pu.call_count == 0
+            assert sm.call_count == 0
+            assert sc.call_count == 0
 
     assert db.remove.call_count == 0
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
@@ -689,37 +629,32 @@ def test_missing_files_copy_delete():
     db.add = MagicMock()
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("shutil.move") as sm:
+        with patch("pathlib.Path.unlink") as pu:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
+                        istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+                        ostream = io.BytesIO()
+                        m.filenames = MagicMock(return_value=[f1.name, f3.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        f3.write("not mail one")
+                        f3.flush()
+                        f2name = f2.name.removeprefix(prefix)
+                        changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
+                        assert ({}, 1, 1) == ns.get_missing_files(db, prefix, {}, changes_theirs, istream, ostream)
+                        assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("shutil.move") as sm:
-            with patch("pathlib.Path.unlink") as pu:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
-                            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                            ostream = io.BytesIO()
-                            m.filenames = MagicMock(return_value=[f1.name, f3.name])
-                            f1.write("mail one")
-                            f1.flush()
-                            f2.write("mail one")
-                            f2.flush()
-                            f3.write("not mail one")
-                            f3.flush()
-                            f2name = f2.name.removeprefix(prefix)
-                            changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
-                            assert ({}, 1, 1) == ns.get_missing_files({}, changes_theirs, prefix, istream, ostream)
-                            assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
-
-                            sm.assert_called_once_with(f1.name, f2.name)
-                            db.add.assert_called_once_with(f2.name)
-                            assert db.remove.mock_calls == [
-                                call(f1.name),
-                                call(f3.name)
-                            ]
-                            pu.assert_called_once()
+                        sm.assert_called_once_with(f1.name, f2.name)
+                        db.add.assert_called_once_with(f2.name)
+                        assert db.remove.mock_calls == [
+                            call(f1.name),
+                            call(f3.name)
+                        ]
+                        pu.assert_called_once()
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
     assert m.filenames.call_count == 3
@@ -734,31 +669,26 @@ def test_missing_files_delete_mismatch():
     db.add = MagicMock(return_value=(m, True))
     db.remove = MagicMock()
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
+    with patch("pathlib.Path.unlink") as pu:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
+                ostream = io.BytesIO()
+                m.filenames = MagicMock(return_value=[f1.name])
+                f1.write("mail two")
+                f1.flush()
+                f2.write("mail one")
+                f2.flush()
+                f2name = f2.name.removeprefix(prefix)
+                changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
+                with pytest.raises(ValueError) as pwe:
+                    ns.get_missing_files(db, prefix, {}, changes_theirs, istream, ostream)
+                assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
+                assert pwe.type == ValueError
+                assert str(pwe.value) == f"Message 'foo' has ['{f2name}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
 
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with patch("pathlib.Path.unlink") as pu:
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                    istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x40a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d")
-                    ostream = io.BytesIO()
-                    m.filenames = MagicMock(return_value=[f1.name])
-                    f1.write("mail two")
-                    f1.flush()
-                    f2.write("mail one")
-                    f2.flush()
-                    f2name = f2.name.removeprefix(prefix)
-                    changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
-                    with pytest.raises(ValueError) as pwe:
-                        ns.get_missing_files({}, changes_theirs, prefix, istream, ostream)
-                    assert b"\x00\x00\x00\x01" + struct.pack("!I", len(f2name)) + f2name.encode("utf-8") + b"\x00\x00\x00\x00" == ostream.getvalue()
-                    assert pwe.type == ValueError
-                    assert str(pwe.value) == f"Message 'foo' has ['{f2name}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
-
-                    assert db.add.call_count == 0
-                    assert pu.call_count == 0
+                assert db.add.call_count == 0
+                assert pu.call_count == 0
 
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
     assert m.filenames.call_count == 3
@@ -805,9 +735,10 @@ def test_recv_file_exists():
 
 
 def test_sync_files_nothing():
+    db = lambda: None
     istream = io.BytesIO(b"\x00\x00\x00\x00")
     ostream = io.BytesIO()
-    assert (0, 0) == ns.sync_files(prefix, {}, istream, ostream)
+    assert (0, 0) == ns.sync_files(db, prefix, {}, istream, ostream)
     out = ostream.getvalue()
     assert b"\x00\x00\x00\x00" == out
 
@@ -828,19 +759,14 @@ def test_sync_files_recv_add():
     db = lambda: None
     db.add = MagicMock(return_value=(lambda: None, True))
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     with patch("builtins.open", mock_open()) as o:
-        with patch("notmuch2.Database", return_value=mock_ctx):
-            assert (0, 2) == ns.sync_files(prefix, missing, istream, ostream)
-            assert call(f1.name, "wb") in o.mock_calls
-            assert call().write(b'mail one\n') in o.mock_calls
-            assert call(f2.name, "wb") in o.mock_calls
-            assert call().write(b'mail two\n') in o.mock_calls
-            hdl = o()
-            assert hdl.write.call_count == 2
+        assert (0, 2) == ns.sync_files(db, prefix, missing, istream, ostream)
+        assert call(f1.name, "wb") in o.mock_calls
+        assert call().write(b'mail one\n') in o.mock_calls
+        assert call(f2.name, "wb") in o.mock_calls
+        assert call().write(b'mail two\n') in o.mock_calls
+        hdl = o()
+        assert hdl.write.call_count == 2
 
     assert db.add.mock_calls == [
         call(f1.name),
@@ -879,19 +805,14 @@ def test_sync_files_recv_new():
     db.add = MagicMock()
     db.add.side_effect = [(m, False), (m, True)]
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     with patch("builtins.open", mock_open()) as o:
-        with patch("notmuch2.Database", return_value=mock_ctx):
-            assert (1, 2) == ns.sync_files(prefix, missing, istream, ostream)
-            assert call(f1.name, "wb") in o.mock_calls
-            assert call().write(b'mail one\n') in o.mock_calls
-            assert call(f2.name, "wb") in o.mock_calls
-            assert call().write(b'mail two\n') in o.mock_calls
-            hdl = o()
-            assert hdl.write.call_count == 2
+        assert (1, 2) == ns.sync_files(db, prefix, missing, istream, ostream)
+        assert call(f1.name, "wb") in o.mock_calls
+        assert call().write(b'mail one\n') in o.mock_calls
+        assert call(f2.name, "wb") in o.mock_calls
+        assert call().write(b'mail two\n') in o.mock_calls
+        hdl = o()
+        assert hdl.write.call_count == 2
 
     assert db.add.mock_calls == [
         call(f1.name),
@@ -909,22 +830,18 @@ def test_sync_files_recv_new():
 
 
 def test_sync_files_send():
-    missing = {}
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = lambda: None
-    mock_ctx.__exit__.return_value = False
-    with patch("notmuch2.Database", return_value=mock_ctx):
-        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-            f1.write("mail one\n")
-            f1.flush()
-            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                f2.write("mail two\n")
-                f2.flush()
-                istream = io.BytesIO(b"\x00\x00\x00\x02" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + struct.pack("!I", len(f2.name)) + f2.name.encode("utf-8"))
-                ostream = io.BytesIO()
-                assert (0, 0) == ns.sync_files(prefix, missing, istream, ostream)
-                out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
+    db = lambda: None
+    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+        f1.write("mail one\n")
+        f1.flush()
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+            f2.write("mail two\n")
+            f2.flush()
+            istream = io.BytesIO(b"\x00\x00\x00\x02" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + struct.pack("!I", len(f2.name)) + f2.name.encode("utf-8"))
+            ostream = io.BytesIO()
+            assert (0, 0) == ns.sync_files(db, prefix, {}, istream, ostream)
+            out = ostream.getvalue()
+            assert b"\x00\x00\x00\x00\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n" == out
 
 
 def test_sync_files_send_recv_add():
@@ -940,29 +857,24 @@ def test_sync_files_send_recv_add():
     db = lambda: None
     db.add = MagicMock(return_value=(lambda: None, True))
 
-    mock_ctx = MagicMock()
-    mock_ctx.__enter__.return_value = db
-    mock_ctx.__exit__.return_value = False
-
     with patch("builtins.open", mock_open(read_data=b"mail three\n")) as o:
-        with patch("notmuch2.Database", return_value=mock_ctx):
-            istream = io.BytesIO(b"\x00\x00\x00\x01" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
-            ostream = io.BytesIO()
-            assert (0, 2) == ns.sync_files(prefix, missing, istream, ostream)
-            assert call(f1.name, "wb") in o.mock_calls
-            assert call().write(b'mail one\n') in o.mock_calls
-            assert call(f2.name, "wb") in o.mock_calls
-            assert call().write(b'mail two\n') in o.mock_calls
-            assert call(f1.name, "rb") in o.mock_calls
-            assert call().write(b'mail one\n') in o.mock_calls
-            hdl = o()
-            assert hdl.write.call_count == 2
-            assert hdl.read.call_count == 1
+        istream = io.BytesIO(b"\x00\x00\x00\x01" + struct.pack("!I", len(f1.name)) + f1.name.encode("utf-8") + b"\x00\x00\x00\x09mail one\n\x00\x00\x00\x09mail two\n")
+        ostream = io.BytesIO()
+        assert (0, 2) == ns.sync_files(db, prefix, missing, istream, ostream)
+        assert call(f1.name, "wb") in o.mock_calls
+        assert call().write(b'mail one\n') in o.mock_calls
+        assert call(f2.name, "wb") in o.mock_calls
+        assert call().write(b'mail two\n') in o.mock_calls
+        assert call(f1.name, "rb") in o.mock_calls
+        assert call().write(b'mail one\n') in o.mock_calls
+        hdl = o()
+        assert hdl.write.call_count == 2
+        assert hdl.read.call_count == 1
 
-            out = ostream.getvalue()
-            res = b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(f2name)) + f2name.encode("utf-8")
-            res += b"\x00\x00\x00\x0bmail three\n"
-            assert res == out
+        out = ostream.getvalue()
+        res = b"\x00\x00\x00\x02" + struct.pack("!I", len(f1name)) + f1name.encode("utf-8") + struct.pack("!I", len(f2name)) + f2name.encode("utf-8")
+        res += b"\x00\x00\x00\x0bmail three\n"
+        assert res == out
 
     assert db.add.mock_calls == [
         call(f1.name),
