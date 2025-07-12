@@ -1239,6 +1239,7 @@ def test_get_ids():
     db = lambda: None
     db.postlist = MagicMock(return_value=[p1, p2, p3])
     db.get_lastdocid = MagicMock(return_value=6)
+    db.close = MagicMock()
     doc = lambda: None
     doc.get_value = MagicMock()
     doc.get_value.side_effect = [b"a", b"b", b"c"]
@@ -1251,6 +1252,7 @@ def test_get_ids():
         db.get_lastdocid.assert_called_once()
         assert db.get_document.mock_calls == [call(4), call(5), call(6)]
         assert doc.get_value.mock_calls == [call(1), call(1), call(1)]
+        db.close.assert_called_once()
 
 
 def test_sync_mbsync_local_nothing():
