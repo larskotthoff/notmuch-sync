@@ -618,7 +618,7 @@ def sync_deletes_remote(prefix, from_stream, to_stream, no_check=False):
         have the 'deleted' tag.
 
     Returns:
-        int: Number of deletions performed remotely.
+        int: Number of deletions performed.
     """
     dels = 0
     ids = get_ids(prefix)
