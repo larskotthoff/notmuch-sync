@@ -186,7 +186,7 @@ def test_sync_tags_files_verbose(shell):
 
             out = sync(shell, local_conf, remote_conf, verbose=True).split('\n')
             assert 'Connecting to remote...' in out[0]
-            assert 'Sending UUID...' in out[1]
+            assert 'Sending UUID' in out[1]
             assert 'Receiving UUID...' in out[2]
             assert 'UUIDs synced.' in out[3]
             assert 'Computing local changes...' in out[4]

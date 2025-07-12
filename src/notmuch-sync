@@ -197,7 +197,7 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     uuids["mine"] = revision.uuid.decode()
 
     async def _send_uuid():
-        logger.info("Sending UUID...")
+        logger.info("Sending UUID %s...", uuids["mine"])
         to_stream.write(uuids["mine"].encode("utf-8"))
         transfer["write"] += 36
         to_stream.flush()
@@ -206,6 +206,7 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         logger.info("Receiving UUID...")
         uuids["theirs"] = from_stream.read(36).decode("utf-8")
         transfer["read"] += 36
+        logger.debug("Received UUID %s...", uuids["theirs"])
 
     async def _sync_uuids():
         await asyncio.gather(_send_uuid(), _recv_uuid())
