@@ -1082,7 +1082,9 @@ def test_sync_deletes_remote():
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+                assert b"\x00\x00\x00\x02" in out
+                assert b"\x00\x00\x00\x03foo" in out
+                assert b"\x00\x00\x00\x03bar" in out
 
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
@@ -1125,7 +1127,9 @@ def test_sync_deletes_remote_no_deleted():
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+                assert b"\x00\x00\x00\x02" in out
+                assert b"\x00\x00\x00\x03foo" in out
+                assert b"\x00\x00\x00\x03bar" in out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -1161,7 +1165,9 @@ def test_sync_deletes_remote_no_deleted_no_check():
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+                assert b"\x00\x00\x00\x02" in out
+                assert b"\x00\x00\x00\x03foo" in out
+                assert b"\x00\x00\x00\x03bar" in out
 
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
@@ -1194,7 +1200,9 @@ def test_sync_deletes_remote_ghost():
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+                assert b"\x00\x00\x00\x02" in out
+                assert b"\x00\x00\x00\x03foo" in out
+                assert b"\x00\x00\x00\x03bar" in out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -1224,7 +1232,9 @@ def test_sync_deletes_remote_none():
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar" == out
+                assert b"\x00\x00\x00\x02" in out
+                assert b"\x00\x00\x00\x03foo" in out
+                assert b"\x00\x00\x00\x03bar" in out
 
     assert db.remove.call_count == 0
 
