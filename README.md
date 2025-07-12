@@ -97,7 +97,7 @@ The sync state for a remote host is saved in the `.notmuch` directory of your
 notmuch mail directory in a file of the form `notmuch-sync-<UUID>` where
 `<UUID>` is the UUID of the database synced with (not the UUID of the local
 notmuch database). The contents of the file are the revision number of the
-remote notmuch database after the last tag sync followed by a space and the UUID
+local notmuch database after the last tag sync followed by a space and the UUID
 of the local notmuch database.
 
 This allows for syncs between any number of arbitrary pairs, even if host
