@@ -13,12 +13,12 @@ import shutil
 import struct
 import subprocess
 import sys
-import xapian
 
 from pathlib import Path
 from select import select
 
 import notmuch2
+import xapian
 
 logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
@@ -509,7 +509,7 @@ def get_ids(prefix):
     db = xapian.Database(os.path.join(prefix, ".notmuch", "xapian"))
     message_ids = []
 
-    ghosts = set([p.docid for p in db.postlist("Tghost")])
+    ghosts = {p.docid for p in db.postlist("Tghost")}
     for doc_id in range(1, db.get_lastdocid() + 1):
         if doc_id not in ghosts:
             try:
@@ -551,7 +551,7 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
         size_data = from_stream.read(4)
         transfer["read"] += 4
         nids = struct.unpack("!I", size_data)[0]
-        ids["theirs"] = set([ read(from_stream).decode("utf-8") for _ in range(nids) ])
+        ids["theirs"] = {read(from_stream).decode("utf-8") for _ in range(nids)}
 
     async def _sync_ids():
         await asyncio.gather(_get_ids(), _recv_ids())
