@@ -13,7 +13,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import time
 
 from pathlib import Path
 from select import select
@@ -768,8 +767,6 @@ def sync_remote(args):
         rmessages, rfiles = sync_files(dbw, prefix, missing, sys.stdin.buffer, sys.stdout.buffer)
         record_sync(sync_fname, dbw.revision())
 
-    # wait for database to be closed...
-    time.sleep(1)
     dchanges = 0
     if args.delete:
         dchanges = sync_deletes_remote(prefix, sys.stdin.buffer, sys.stdout.buffer, args.delete_no_check)
