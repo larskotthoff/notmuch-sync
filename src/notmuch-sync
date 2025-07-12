@@ -470,6 +470,9 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
             logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
             dst = os.path.join(prefix, f["name"])
             recv_file(dst, from_stream)
+
+        for idx, f in enumerate(files["mine"]):
+            dst = os.path.join(prefix, f["name"])
             logger.info("Adding %s to DB.", dst)
             msg, dup = dbw.add(dst)
             if not dup:
