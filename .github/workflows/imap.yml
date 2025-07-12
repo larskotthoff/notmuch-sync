@@ -24,7 +24,7 @@ jobs:
           dovecot-pop3d \
           isync \
           notmuch \
-          afew libnotmuch-dev python3-notmuch2 ssh wget
+          afew libnotmuch-dev python3-notmuch2 python3-xapian ssh wget
     
     - name: Setup Dovecot IMAP server
       run: |

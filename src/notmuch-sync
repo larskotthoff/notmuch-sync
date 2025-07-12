@@ -13,6 +13,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import xapian
 
 from pathlib import Path
 from select import select
@@ -490,14 +491,43 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
     return (changes["messages"], changes["files"])
 
 
+def get_ids(prefix):
+    """
+    Get all message IDs from the notmuch database, using Xapian directly (much
+    faster).
+
+    Args:
+        prefix (str): Prefix path for filenames (notmuch config database.path).
+
+    Returns:
+        set: All message IDs.
+    """
+    db = xapian.Database(os.path.join(prefix, ".notmuch", "xapian"))
+    message_ids = []
+
+    ghosts = set([p.docid for p in db.postlist("Tghost")])
+    for doc_id in range(1, db.get_lastdocid() + 1):
+        if doc_id not in ghosts:
+            try:
+                doc = db.get_document(doc_id)
+                value = doc.get_value(1)
+                if value:
+                    message_ids.append(value.decode("utf-8"))
+            except xapian.DocNotFoundError:
+                pass
+
+    return set(message_ids)
+
+
 # Separate methods for local and remote to avoid sending all IDs both ways --
 # have local figure out what needs to be deleted on both sides
-def sync_deletes_local(from_stream, to_stream, no_check=False):
+def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     """
     Synchronize deletions for the local database and instruct remote to delete
     messages/files as needed.
 
     Args:
+        prefix (str): Prefix path for filenames (notmuch config database.path).
         from_stream: Stream to read from the remote.
         to_stream: Stream to write to the remote.
         no_check: Delete message not present on other side even if it doesn't
@@ -510,17 +540,14 @@ def sync_deletes_local(from_stream, to_stream, no_check=False):
     dels = {'a': 0}
 
     async def _get_ids():
-        with notmuch2.Database() as db:
-            logger.info("Getting all message IDs from DB...")
-            msgs = db.messages('*')
-            ids["mine"] = [ msg.messageid for msg in msgs ]
+        ids["mine"] = get_ids(prefix)
 
     async def _recv_ids():
         logger.info("Receiving all message IDs from remote...")
         size_data = from_stream.read(4)
         transfer["read"] += 4
         nids = struct.unpack("!I", size_data)[0]
-        ids["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
+        ids["theirs"] = set([ read(from_stream).decode("utf-8") for _ in range(nids) ])
 
     async def _sync_ids():
         await asyncio.gather(_get_ids(), _recv_ids())
@@ -529,7 +556,7 @@ def sync_deletes_local(from_stream, to_stream, no_check=False):
     logger.info("Message IDs synced.")
 
     async def _send_del_ids():
-        to_del_remote = set(ids["theirs"]) - set(ids["mine"])
+        to_del_remote = ids["theirs"] - ids["mine"]
         logger.debug("Remote IDs to be deleted %s.", to_del_remote)
         logger.info("Sending message IDs to be deleted to remote...")
         to_stream.write(struct.pack("!I", len(to_del_remote)))
@@ -539,7 +566,7 @@ def sync_deletes_local(from_stream, to_stream, no_check=False):
             write(mid.encode("utf-8"), to_stream)
 
     async def _del_ids():
-        to_del = set(ids["mine"]) - set(ids["theirs"])
+        to_del = ids["mine"] - ids["theirs"]
         logger.debug("Local IDs to be deleted %s.", to_del)
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
             for mid in to_del:
@@ -575,11 +602,12 @@ def sync_deletes_local(from_stream, to_stream, no_check=False):
     return dels["a"]
 
 
-def sync_deletes_remote(from_stream, to_stream, no_check=False):
+def sync_deletes_remote(prefix, from_stream, to_stream, no_check=False):
     """
     Receive instructions from local to delete messages/files from the remote database.
 
     Args:
+        prefix (str): Prefix path for filenames (notmuch config database.path).
         from_stream: Stream to read from the local.
         to_stream: Stream to write to the local.
         no_check: Delete message not present on other side even if it doesn't
@@ -589,9 +617,7 @@ def sync_deletes_remote(from_stream, to_stream, no_check=False):
         int: Number of deletions performed remotely.
     """
     dels = 0
-    with notmuch2.Database() as db:
-        msgs = db.messages('*')
-        ids = [ msg.messageid for msg in msgs ]
+    ids = get_ids(prefix)
 
     to_stream.write(struct.pack("!I", len(ids)))
     transfer["write"] += 4
@@ -738,7 +764,7 @@ def sync_remote(args):
 
     dchanges = 0
     if args.delete:
-        dchanges = sync_deletes_remote(sys.stdin.buffer, sys.stdout.buffer, args.delete_no_check)
+        dchanges = sync_deletes_remote(prefix, sys.stdin.buffer, sys.stdout.buffer, args.delete_no_check)
     if args.mbsync:
         sync_mbsync_remote(prefix, sys.stdin.buffer, sys.stdout.buffer)
     sys.stdout.buffer.write(struct.pack("!IIIIII", tchanges, fchanges, dfchanges,
@@ -789,7 +815,7 @@ def sync_local(args):
 
             dchanges = 0
             if args.delete:
-                dchanges = sync_deletes_local(from_remote, to_remote, args.delete_no_check)
+                dchanges = sync_deletes_local(prefix, from_remote, to_remote, args.delete_no_check)
             if args.mbsync:
                 sync_mbsync_local(prefix, from_remote, to_remote)
 
