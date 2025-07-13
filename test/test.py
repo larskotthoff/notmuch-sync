@@ -1240,29 +1240,21 @@ def test_sync_deletes_remote_none():
 
 
 def test_get_ids():
-    p1 = lambda: None
-    p1.docid = 1
-    p2 = lambda: None
-    p2.docid = 2
-    p3 = lambda: None
-    p3.docid = 3
-    db = lambda: None
-    db.postlist = MagicMock(return_value=[p1, p2, p3])
-    db.get_lastdocid = MagicMock(return_value=6)
-    db.close = MagicMock()
-    doc = lambda: None
-    doc.get_value = MagicMock()
-    doc.get_value.side_effect = [b"a", b"b", b"c"]
-    db.get_document = MagicMock(return_value=doc)
+    m1 = lambda: None
+    m1.messageid = "foo"
+    m2 = lambda: None
+    m2.messageid = "bar"
 
-    with patch("xapian.Database", return_value=db) as xdb:
-        assert {"a", "b", "c"} == ns.get_ids(prefix)
-        xdb.assert_called_once_with(prefix + ".notmuch/xapian")
-        db.postlist.assert_called_once_with("Tghost")
-        db.get_lastdocid.assert_called_once()
-        assert db.get_document.mock_calls == [call(4), call(5), call(6)]
-        assert doc.get_value.mock_calls == [call(1), call(1), call(1)]
-        db.close.assert_called_once()
+    db = lambda: None
+    db.messages = MagicMock(return_value=[m1, m2])
+
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__.return_value = db
+    mock_ctx.__exit__.return_value = False
+
+    with patch("notmuch2.Database", return_value=mock_ctx):
+        assert {"foo", "bar"} == ns.get_ids(prefix)
+        db.messages.assert_called_once_with("*")
 
 
 def test_sync_mbsync_local_nothing():

@@ -18,7 +18,6 @@ from pathlib import Path
 from select import select
 
 import notmuch2
-import xapian
 
 logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
@@ -497,8 +496,7 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
 
 def get_ids(prefix):
     """
-    Get all message IDs from the notmuch database, using Xapian directly (much
-    faster).
+    Get all message IDs from the notmuch database.
 
     Args:
         prefix (str): Prefix path for filenames (notmuch config database.path).
@@ -506,22 +504,10 @@ def get_ids(prefix):
     Returns:
         set: All message IDs.
     """
-    db = xapian.Database(os.path.join(prefix, ".notmuch", "xapian"))
-    message_ids = []
-
-    ghosts = {p.docid for p in db.postlist("Tghost")}
-    for doc_id in range(1, db.get_lastdocid() + 1):
-        if doc_id not in ghosts:
-            try:
-                doc = db.get_document(doc_id)
-                value = doc.get_value(1)
-                if value:
-                    message_ids.append(value.decode("utf-8"))
-            except xapian.DocNotFoundError:
-                pass
-    db.close()
-
-    return set(message_ids)
+    with notmuch2.Database() as db:
+        logger.info("Getting all message IDs from DB...")
+        msgs = db.messages('*')
+        return {msg.messageid for msg in msgs}
 
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
