@@ -206,13 +206,13 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         logger.info("Receiving UUID...")
         uuids["theirs"] = from_stream.read(36).decode("utf-8")
         transfer["read"] += 36
-        logger.debug("Received UUID %s...", uuids["theirs"])
 
     async def _sync_uuids():
         await asyncio.gather(_send_uuid(), _recv_uuid())
 
     asyncio.run(_sync_uuids())
     logger.info("UUIDs synced.")
+    logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
     fname = os.path.join(prefix, ".notmuch", "notmuch-sync-" + uuids["theirs"])
 
     changes = {}
@@ -282,7 +282,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
             continue
 
     async def _send_hashes_req():
-        logger.info("Requesting hashes from remote...")
+        logger.info("Requesting %s hashes from remote...", len(hashes["req_mine"]))
         logger.debug("Requesting hashes %s", hashes["req_mine"])
         to_stream.write(struct.pack("!I", len(hashes["req_mine"])))
         transfer["write"] += 4
@@ -304,7 +304,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     asyncio.run(_sync_reqs())
 
     async def _send_hashes():
-        logger.info("Hashing requested files and sending to remote...")
+        logger.info("Hashing %s requested files and sending to remote...", len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         to_stream.write(struct.pack("!I", len(tmp)))
         transfer["write"] += 4
