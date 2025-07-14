@@ -207,8 +207,8 @@ jobs:
     # test initial sync
     - run: |
         time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep "remote:	3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep "local:  0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep "remote: 3 new messages,	3 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -241,8 +241,8 @@ jobs:
         grep -q "pulling message" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -275,8 +275,8 @@ jobs:
         grep -q "pulling message" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  1 new messages,	1 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -312,8 +312,8 @@ jobs:
         grep -q "pulling message" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	1 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	1 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -339,8 +339,8 @@ jobs:
         grep -q "pushed flags" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -364,8 +364,8 @@ jobs:
         grep -q "pushed deletion" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	0 new messages,	0 new files,	6 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 0 new messages,	0 new files,	6 files copied/moved,	0 files deleted,	6 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
     - run: diff -u /tmp/dump.local /tmp/dump.remote
@@ -385,8 +385,8 @@ jobs:
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config && sudo -u synctest notmuch new
     - run: |
         time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
-        grep -q "remote:	0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "remote: 0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: mbsync -a --debug-sync -V -c ~/.config/mbsync/config
     - run: sudo -u synctest mbsync -a --debug-sync -V -c /home/synctest/.config/mbsync/config
 
