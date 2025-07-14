@@ -693,7 +693,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             if (f in mbsync["theirs"] and mbsync["theirs"][f] > mbsync["mine"][f]) ]
     pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
     logger.debug("Local mbsync files to be updated from remote %s.", pull)
-    logger.info("Sending list of requested mbsync files to remote...")
+    logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
     write(json.dumps(pull).encode("utf-8"), to_stream)
 
     async def _send_mbsync_files():
@@ -702,7 +702,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
         push += list(set(mbsync["mine"].keys()) - set(mbsync["theirs"].keys()))
 
         logger.debug("mbsync files to update on remote %s.", push)
-        logger.info("Sending mbsync files to remote...")
+        logger.info("Sending %s mbsync files to remote...", len(push))
         write(json.dumps(push).encode("utf-8"), to_stream)
         for idx, f in enumerate(push):
             logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
@@ -841,8 +841,8 @@ def sync_local(args):
         from_remote.close()
         err_remote.close()
 
-    logger.warning("local:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
-    logger.warning("remote:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
+    logger.warning("local:  %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
+    logger.warning("remote: %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
     logger.warning("%s/%s bytes received from/sent to remote.", transfer["read"], transfer["write"])
 
     if len(data) > 0:

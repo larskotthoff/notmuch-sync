@@ -47,8 +47,8 @@ def test_sync(shell):
             assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -61,8 +61,8 @@ def test_sync(shell):
                 assert f.read() == f"5 {rsum[1]}"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"5 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -92,8 +92,8 @@ def test_sync_tags(shell):
             assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
             with open(local_sync_file, "r", encoding="utf-8") as f:
@@ -123,8 +123,8 @@ def test_sync_tags(shell):
             assert rsum[2] == "8\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t3 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t3 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t3 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t3 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert shell.run("notmuch", "search", "--output=tags", "--format=json", "id:874llc2bkp.fsf@curie.anarc.at",
                              env={"NOTMUCH_CONFIG": local_conf}).data == ["attachment", "local"]
@@ -154,8 +154,8 @@ def test_sync_tags(shell):
             assert rsum[2] == "11\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
 
 def test_sync_tags_files_verbose(shell):
@@ -211,8 +211,8 @@ def test_sync_tags_files_verbose(shell):
             assert 'Missing files synced.' in out[23]
             assert 'Writing last sync revision 11.' in out[24]
             assert 'Getting change numbers from remote...' in out[25]
-            assert 'local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[26]
-            assert 'remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[27]
+            assert 'local:  1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[26]
+            assert 'remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[27]
             assert '9094/4284 bytes received from/sent to remote.' in out[28]
 
 
@@ -254,8 +254,8 @@ def test_sync_tags_files(shell):
             assert rsum[2] == "4\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t2 new messages,\t3 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 2 new messages,\t3 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
@@ -297,8 +297,8 @@ def test_sync_tags_files(shell):
             assert rsum[2] == "9\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"9 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -339,8 +339,8 @@ def test_sync_tags_files_copied(shell):
             assert rsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 1 new messages,\t1 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
@@ -382,8 +382,8 @@ def test_sync_tags_files_copied(shell):
             assert rsum[2] == "10\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"10 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -425,8 +425,8 @@ def test_sync_tags_files_moved(shell):
             assert rsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  2 new messages,\t2 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
@@ -473,8 +473,8 @@ def test_sync_tags_files_moved(shell):
             assert not Path(os.path.join(remote, "mails", "html-only1.eml")).exists()
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t1 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t1 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"11 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -491,8 +491,8 @@ def test_sync_tags_files_moved(shell):
             assert rsum[2] == "11\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"11 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -534,8 +534,8 @@ def test_sync_tags_files_moved_twice(shell):
             assert rsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t2 new messages,\t2 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  2 new messages,\t2 new files,\t1 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(local, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(local, "mails", "calendar.eml")).exists()
@@ -579,8 +579,8 @@ def test_sync_tags_files_moved_twice(shell):
             assert rsum[2] == "9\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"11 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -611,8 +611,8 @@ def test_sync_tags_files_none_remote(shell):
                              env={"NOTMUCH_CONFIG": local_conf}).returncode == 0
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t4 new messages,\t5 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 4 new messages,\t5 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(os.path.join(remote, "mails", "attachment.eml")).exists()
             assert Path(os.path.join(remote, "mails", "calendar.eml")).exists()
@@ -654,8 +654,8 @@ def test_sync_tags_files_none_remote(shell):
             assert rsum[2] == "9\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"9 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -680,8 +680,8 @@ def test_sync_files_deleted(shell):
             assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -706,8 +706,8 @@ def test_sync_files_deleted(shell):
             assert rsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t1 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t1 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"6 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -746,8 +746,8 @@ def test_sync_message_deleted_local(shell):
             shell.run("notmuch", "tag", "+deleted", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org", env={"NOTMUCH_CONFIG": remote_conf})
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -772,8 +772,8 @@ def test_sync_message_deleted_local(shell):
             assert lsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"6 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -828,12 +828,12 @@ def test_sync_message_deleted_local_failsafe(shell):
             assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             # sync again to recover message
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"6 {lsum[1]}"
@@ -876,8 +876,8 @@ def test_sync_message_deleted_remote(shell):
             shell.run("notmuch", "tag", "+deleted", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org", env={"NOTMUCH_CONFIG": local_conf})
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -902,8 +902,8 @@ def test_sync_message_deleted_remote(shell):
             assert rsum[2] == "6\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"6 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -958,12 +958,12 @@ def test_sync_message_deleted_remote_failsafe(shell):
             assert rsum[2] == "5\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             # sync again to recover message
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"6 {lsum[1]}"
@@ -1007,8 +1007,8 @@ def test_sync_message_deleted_multiple_and_back(shell):
             shell.run("notmuch", "tag", "+deleted", "id:1258848661-4660-2-git-send-email-stefan@datenfreihafen.org", env={"NOTMUCH_CONFIG": local_conf})
 
             out = sync(shell, local_conf, remote_conf).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t1 messages with tag changes,\t0 messages deleted" in out[1]
 
             local_sync_file = os.path.join(local, ".notmuch", f"notmuch-sync-{rsum[1]}")
             assert os.path.exists(local_sync_file)
@@ -1036,8 +1036,8 @@ def test_sync_message_deleted_multiple_and_back(shell):
             assert Path(os.path.join(local, "mails", "simple.eml")).exists()
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t1 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"7 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -1077,8 +1077,8 @@ def test_sync_message_deleted_multiple_and_back(shell):
             assert rsum[2] == "8\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
             with open(local_sync_file, "r", encoding="utf-8") as f:
                 assert f.read() == f"10 {lsum[1]}"
             with open(remote_sync_file, "r", encoding="utf-8") as f:
@@ -1105,8 +1105,8 @@ def test_sync_message_deleted_multiple_and_back(shell):
             assert rsum[2] == "9\n"
 
             out = sync(shell, local_conf, remote_conf, delete=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
 
 def test_sync_mbsync(shell):
@@ -1131,8 +1131,8 @@ def test_sync_mbsync(shell):
             assert not Path(remote_uidvalidity).exists()
 
             out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             assert Path(remote_mbsyncstate).exists()
             assert Path(remote_uidvalidity).exists()
@@ -1147,8 +1147,8 @@ def test_sync_mbsync(shell):
                 assert f.read() == "b"
 
             out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             with open(local_uidvalidity, "r", encoding="utf-8") as f:
                 assert f.read() == "c"
@@ -1162,8 +1162,8 @@ def test_sync_mbsync(shell):
                 f.write("e")
 
             out = sync(shell, local_conf, remote_conf, mbsync=True).split('\n')
-            assert "local:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
-            assert "remote:\t0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
+            assert "local:  0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[0]
+            assert "remote: 0 new messages,\t0 new files,\t0 files copied/moved,\t0 files deleted,\t0 messages with tag changes,\t0 messages deleted" in out[1]
 
             with open(local_mbsyncstate, "r", encoding="utf-8") as f:
                 assert f.read() == "e"
