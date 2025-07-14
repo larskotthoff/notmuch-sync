@@ -694,7 +694,11 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
     logger.debug("Local mbsync files to be updated from remote %s.", pull)
     logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
-    write(json.dumps(pull).encode("utf-8"), to_stream)
+    to_stream.write(struct.pack("!I", len(pull)))
+    transfer["write"] += 4
+    to_stream.flush()
+    for f in pull:
+        write(f.encode("utf-8"), to_stream)
 
     async def _send_mbsync_files():
         push = [ f for f in mbsync["theirs"].keys()
@@ -703,7 +707,11 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
 
         logger.debug("mbsync files to update on remote %s.", push)
         logger.info("Sending %s mbsync files to remote...", len(push))
-        write(json.dumps(push).encode("utf-8"), to_stream)
+        to_stream.write(struct.pack("!I", len(push)))
+        transfer["write"] += 4
+        to_stream.flush()
+        for f in push:
+            write(f.encode("utf-8"), to_stream)
         for idx, f in enumerate(push):
             logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
                          len(push), f)
@@ -737,14 +745,20 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
                for f in Path(prefix).rglob(pat) }
     write(json.dumps(mbsync).encode("utf-8"), to_stream)
 
-    push = json.loads(read(from_stream).decode("utf-8"))
+    size_data = from_stream.read(4)
+    transfer["read"] += 4
+    nams = struct.unpack("!I", size_data)[0]
+    push = [read(from_stream).decode("utf-8") for _ in range(nams)]
 
     async def _send_mbsync_files():
         for f in push:
             send_file(os.path.join(prefix, f), to_stream)
 
     async def _recv_mbsync_files():
-        pull = json.loads(read(from_stream).decode("utf-8"))
+        size_data = from_stream.read(4)
+        transfer["read"] += 4
+        nams = struct.unpack("!I", size_data)[0]
+        pull = [read(from_stream).decode("utf-8") for _ in range(nams)]
         for f in pull:
             recv_file(os.path.join(prefix, f), from_stream,
                       overwrite_raise=False)

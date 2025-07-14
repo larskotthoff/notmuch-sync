@@ -252,10 +252,12 @@ The communication protocol is binary. This is what the script produces on stdout
     - local to remote:
         - 4 bytes unsigned int length of JSON-encoded list of files for remote
           to send to local
-        - JSON-encoded list of files for remote to send to local
+        - 4 bytes length of list of files for remote to send to local
+        - list of files for remote to send to local
         - 4 bytes unsigned int length of JSON-encoded list of files for local
           to send to remote
-        - JSON-encoded list of files for local to send to remote
+        - 4 bytes length of list of files for local to send to remote
+        - list of files for local to send to remote
         - for each file to send from local to remote:
             - 4 bytes unsigned int length of requested file
             - requested file

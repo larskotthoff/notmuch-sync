@@ -1279,7 +1279,7 @@ def test_sync_mbsync_local_nothing():
             ns.sync_mbsync_local(tmpdir, istream, ostream)
 
             out = ostream.getvalue()
-            assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
+            assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == out
 
 
 def test_sync_mbsync_local():
@@ -1315,7 +1315,7 @@ def test_sync_mbsync_local():
                 assert b"b" == args[0]
 
             out = ostream.getvalue()
-            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
+            assert b"\x00\x00\x00\x01\x00\x00\x00\x0c.mbsyncstate\x00\x00\x00\x01\x00\x00\x00\x0c.uidvalidity\x00\x00\x00\x01a" == out
 
 
 def test_sync_mbsync_local_no_changes():
@@ -1345,7 +1345,7 @@ def test_sync_mbsync_local_no_changes():
                 assert o.call_count == 0
 
             out = ostream.getvalue()
-            assert b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]" == out
+            assert b"\x00\x00\x00\x00\x00\x00\x00\x00" == out
 
 
 def test_sync_mbsync_local_missing():
@@ -1376,7 +1376,7 @@ def test_sync_mbsync_local_missing():
                 assert b"b" == args[0]
 
             out = ostream.getvalue()
-            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == out
+            assert b"\x00\x00\x00\x01\x00\x00\x00\x0c.mbsyncstate\x00\x00\x00\x01\x00\x00\x00\x0c.uidvalidity\x00\x00\x00\x01a" == out
 
 
 def test_sync_mbsync_remote_nothing():
@@ -1388,7 +1388,7 @@ def test_sync_mbsync_remote_nothing():
         tmpdir = _tmpdir + os.sep
         with patch("pathlib.Path.rglob") as pr:
             pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
+            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
             ostream = io.BytesIO()
             ns.sync_mbsync_remote(tmpdir, istream, ostream)
 
@@ -1416,7 +1416,7 @@ def test_sync_mbsync_remote():
 
         with patch("pathlib.Path.rglob") as pr:
             pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a")
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x0c.mbsyncstate\x00\x00\x00\x01\x00\x00\x00\x0c.uidvalidity\x00\x00\x00\x01a")
             ostream = io.BytesIO()
             with patch("builtins.open", mock_open(read_data=b"b")) as o:
                 ns.sync_mbsync_remote(tmpdir, istream, ostream)
@@ -1452,7 +1452,7 @@ def test_sync_mbsync_remote_no_changes():
 
         with patch("pathlib.Path.rglob") as pr:
             pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x02[]")
+            istream = io.BytesIO(b"\x00\x00\x00\x00\x00\x00\x00\x00")
             ostream = io.BytesIO()
             with patch("builtins.open", mock_open(read_data=b"a")) as o:
                 ns.sync_mbsync_remote(tmpdir, istream, ostream)
@@ -1477,7 +1477,7 @@ def test_sync_mbsync_remote_missing():
 
         with patch("pathlib.Path.rglob") as pr:
             pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01b")
+            istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x0c.mbsyncstate\x00\x00\x00\x01\x00\x00\x00\x0c.uidvalidity\x00\x00\x00\x01b")
             ostream = io.BytesIO()
             with patch("builtins.open", mock_open(read_data=b"a")) as o:
                 ns.sync_mbsync_remote(tmpdir, istream, ostream)
