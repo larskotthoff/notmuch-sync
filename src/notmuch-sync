@@ -205,13 +205,13 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         logger.info("Receiving UUID...")
         uuids["theirs"] = from_stream.read(36).decode("utf-8")
         transfer["read"] += 36
-        logger.debug("Received UUID %s...", uuids["theirs"])
 
     async def _sync_uuids():
         await asyncio.gather(_send_uuid(), _recv_uuid())
 
     asyncio.run(_sync_uuids())
     logger.info("UUIDs synced.")
+    logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
     fname = os.path.join(prefix, ".notmuch", "notmuch-sync-" + uuids["theirs"])
 
     changes = {}
@@ -281,7 +281,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
             continue
 
     async def _send_hashes_req():
-        logger.info("Requesting hashes from remote...")
+        logger.info("Requesting %s hashes from remote...", len(hashes["req_mine"]))
         logger.debug("Requesting hashes %s", hashes["req_mine"])
         to_stream.write(struct.pack("!I", len(hashes["req_mine"])))
         transfer["write"] += 4
@@ -303,7 +303,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     asyncio.run(_sync_reqs())
 
     async def _send_hashes():
-        logger.info("Hashing requested files and sending to remote...")
+        logger.info("Hashing %s requested files and sending to remote...", len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         to_stream.write(struct.pack("!I", len(tmp)))
         transfer["write"] += 4
@@ -677,8 +677,12 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             if (f in mbsync["theirs"] and mbsync["theirs"][f] > mbsync["mine"][f]) ]
     pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
     logger.debug("Local mbsync files to be updated from remote %s.", pull)
-    logger.info("Sending list of requested mbsync files to remote...")
-    write(json.dumps(pull).encode("utf-8"), to_stream)
+    logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
+    to_stream.write(struct.pack("!I", len(pull)))
+    transfer["write"] += 4
+    to_stream.flush()
+    for f in pull:
+        write(f.encode("utf-8"), to_stream)
 
     async def _send_mbsync_files():
         push = [ f for f in mbsync["theirs"].keys()
@@ -686,8 +690,12 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
         push += list(set(mbsync["mine"].keys()) - set(mbsync["theirs"].keys()))
 
         logger.debug("mbsync files to update on remote %s.", push)
-        logger.info("Sending mbsync files to remote...")
-        write(json.dumps(push).encode("utf-8"), to_stream)
+        logger.info("Sending %s mbsync files to remote...", len(push))
+        to_stream.write(struct.pack("!I", len(push)))
+        transfer["write"] += 4
+        to_stream.flush()
+        for f in push:
+            write(f.encode("utf-8"), to_stream)
         for idx, f in enumerate(push):
             logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
                          len(push), f)
@@ -721,14 +729,20 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
                for f in Path(prefix).rglob(pat) }
     write(json.dumps(mbsync).encode("utf-8"), to_stream)
 
-    push = json.loads(read(from_stream).decode("utf-8"))
+    size_data = from_stream.read(4)
+    transfer["read"] += 4
+    nams = struct.unpack("!I", size_data)[0]
+    push = [read(from_stream).decode("utf-8") for _ in range(nams)]
 
     async def _send_mbsync_files():
         for f in push:
             send_file(os.path.join(prefix, f), to_stream)
 
     async def _recv_mbsync_files():
-        pull = json.loads(read(from_stream).decode("utf-8"))
+        size_data = from_stream.read(4)
+        transfer["read"] += 4
+        nams = struct.unpack("!I", size_data)[0]
+        pull = [read(from_stream).decode("utf-8") for _ in range(nams)]
         for f in pull:
             recv_file(os.path.join(prefix, f), from_stream,
                       overwrite_raise=False)
@@ -825,8 +839,8 @@ def sync_local(args):
         from_remote.close()
         err_remote.close()
 
-    logger.warning("local:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
-    logger.warning("remote:\t%s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
+    logger.warning("local:  %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
+    logger.warning("remote: %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
     logger.warning("%s/%s bytes received from/sent to remote.", transfer["read"], transfer["write"])
 
     if len(data) > 0:
