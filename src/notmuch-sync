@@ -511,18 +511,18 @@ def get_ids(prefix):
 
     logger.info("Getting all message IDs from DB...")
     ghosts = {p.docid for p in db.postlist("Tghost")}
-    for doc_id in range(1, db.get_lastdocid() + 1):
-        if doc_id not in ghosts:
-            try:
-                doc = db.get_document(doc_id)
-                value = doc.get_value(1)
-                if value:
-                    message_ids.append(value.decode("utf-8"))
-            except xapian.DocNotFoundError:
-                pass
-            except RuntimeError:
-                # not entirely sure why, but this seems to happen sometimes
-                continue
+    all_docs = set(range(1, db.get_lastdocid() + 1))
+    for doc_id in all_docs - ghosts:
+        try:
+            doc = db.get_document(doc_id)
+            value = doc.get_value(1)
+            if value:
+                message_ids.append(value.decode("utf-8"))
+        except xapian.DocNotFoundError:
+            pass
+        except RuntimeError:
+            # not entirely sure why, but this seems to happen sometimes
+            continue
 
     db.close()
 
