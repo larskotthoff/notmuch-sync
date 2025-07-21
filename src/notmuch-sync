@@ -520,6 +520,9 @@ def get_ids(prefix):
                     message_ids.append(value.decode("utf-8"))
             except xapian.DocNotFoundError:
                 pass
+            except RuntimeError:
+                # not entirely sure why, but this seems to happen sometimes
+                continue
 
     db.close()
 
