@@ -738,7 +738,7 @@ def test_recv_file_exists():
                 with pytest.raises(ValueError) as pwe:
                     ns.recv_file("foo", stream, "3d0ea99df44f734ef462d85bfeb1352edcb7af528f3386cdaa0939ac27cd8cb3")
                 assert pwe.type == ValueError
-                assert str(pwe.value) == "Set to receive 'foo', but already exists with different content!"
+                assert str(pwe.value) == "Receiving 'foo', but already exists with different content!"
                 assert pe.call_count == 1
                 assert o.call_count == 0
 

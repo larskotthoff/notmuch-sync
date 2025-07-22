@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-"""notmuch-sync: Synchronize notmuch email databases and message files between local and remote systems."""
+"""notmuch-sync: Synchronize notmuch email databases and message files between
+local and remote systems."""
 
 import argparse
 import asyncio
@@ -297,7 +298,8 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     asyncio.run(_sync_reqs())
 
     async def _send_hashes():
-        logger.info("Hashing %s requested files and sending to remote...", len(hashes["req_theirs"]))
+        logger.info("Hashing %s requested files and sending to remote...",
+                    len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         write(json.dumps(tmp).encode("utf-8"), to_stream)
 
@@ -326,7 +328,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
                 for f in changes_theirs[mid]["files"]:
                     if f in missing_mine:
                         # check if it has been moved/copied
-                        matches = [ x[0] for x in hashes_mine.items() if hashes["theirs"][f] == x[1] ]
+                        matches = [x[0] for x in hashes_mine.items() if hashes["theirs"][f] == x[1]]
                         if len(matches) > 0:
                             src = os.path.join(prefix, matches[0])
                             dst = os.path.join(prefix, f)
@@ -401,7 +403,7 @@ def recv_file(fname, stream, overwrite_raise=True):
         sha_mine = digest(content)
         sha_exists = digest(Path(fname).read_bytes())
         if sha_exists != sha_mine:
-            raise ValueError(f"Set to receive '{fname}', but already exists with different content!")
+            raise ValueError(f"Receiving '{fname}', but already exists with different content!")
     Path(fname).parent.mkdir(parents=True, exist_ok=True)
     with open(fname, "wb") as f:
         f.write(content)
