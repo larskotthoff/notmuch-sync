@@ -219,18 +219,18 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     logger.info("Computing local changes...")
     changes["mine"] = get_changes(dbw, revision, prefix, fname)
 
-    async def _send():
+    async def _send_changes():
         logger.info("Sending local changes...")
         write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
-    async def _recv():
+    async def _recv_changes():
         logger.info("Receiving remote changes...")
         changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    async def _sync():
-        await asyncio.gather(_send(), _recv())
+    async def _sync_changes():
+        await asyncio.gather(_send_changes(), _recv_changes())
 
-    asyncio.run(_sync())
+    asyncio.run(_sync_changes())
     logger.info("Changes synced.")
     logger.debug("Local changes %s, remote changes %s.", changes["mine"], changes["theirs"])
     tchanges = sync_tags(dbw, changes["mine"], changes["theirs"])
@@ -306,10 +306,10 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         tmp = json.loads(read(from_stream).decode("utf-8"))
         hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
 
-    async def _sync():
+    async def _sync_hashes():
         await asyncio.gather(_send_hashes(), _receive_hashes())
 
-    asyncio.run(_sync())
+    asyncio.run(_sync_hashes())
 
     # now actually determine changes and move/copy
     for mid in changes_theirs:
@@ -465,10 +465,10 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
                     for tag in missing[f["id"]]["tags"]:
                         msg.tags.add(tag)
 
-    async def _sync():
+    async def _sync_files():
         await asyncio.gather(_send_files(), _recv_files())
 
-    asyncio.run(_sync())
+    asyncio.run(_sync_files())
     logger.info("Missing files synced.")
 
     return (changes["messages"], changes["files"])
