@@ -483,7 +483,7 @@ def get_ids(prefix):
         prefix (str): Prefix path for filenames (notmuch config database.path).
 
     Returns:
-        set: All message IDs.
+        list: All message IDs.
     """
     db = xapian.Database(os.path.join(prefix, ".notmuch", "xapian"))
     message_ids = []
