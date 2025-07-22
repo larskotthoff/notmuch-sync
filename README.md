@@ -232,15 +232,11 @@ The communication protocol is binary. This is what the script produces on stdout
     - requested file
 - if --delete is given:
     - remote to local:
-        - 4 bytes unsigned int number of IDs in the DB
-        - for each of the IDs:
-            - 4 bytes unsigned int length of ID
-            - ID
+        - 4 bytes unsigned int length of JSON-encoded IDs in the DB
+        - JSON-encoded IDs in the DB
     - local to remote:
-        - 4 bytes unsigned int number of IDs to delete
-        - for each of the IDs:
-            - 4 bytes unsigned int length of ID
-            - ID
+        - 4 bytes unsigned int length of JSON-encoded IDs to be deleted
+        - JSON-encoded IDs to be deleted
 - if --mbsync is given:
     - remote to local:
         - 4 bytes unsigned int length of JSON-encoded stat (name and mtime) of

@@ -901,15 +901,15 @@ def test_sync_deletes_local():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"foo\"]")
                 ostream = io.BytesIO()
                 assert 1 == ns.sync_deletes_local(prefix, istream, ostream)
                 pu.assert_called_once()
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00" == out
+                assert b"\x00\x00\x00\x02[]" == out
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
     m2.filenames.assert_called_once()
@@ -943,15 +943,15 @@ def test_sync_deletes_local_no_deleted():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"foo\"]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_local(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00" == out
+                assert b"\x00\x00\x00\x02[]" == out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -979,15 +979,15 @@ def test_sync_deletes_local_no_deleted_no_check():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"foo\"]")
                 ostream = io.BytesIO()
                 assert 1 == ns.sync_deletes_local(prefix, istream, ostream, no_check=True)
                 pu.assert_called_once()
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00" == out
+                assert b"\x00\x00\x00\x02[]" == out
 
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
@@ -1012,15 +1012,15 @@ def test_sync_deletes_local_ghost():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03foo")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"foo\"]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_local(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00" == out
+                assert b"\x00\x00\x00\x02[]" == out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -1042,15 +1042,15 @@ def test_sync_deletes_local_none():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x02\x00\x00\x00\x03foo\x00\x00\x00\x03bar")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x0E[\"foo\", \"bar\"]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_local(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x00" == out
+                assert b"\x00\x00\x00\x02[]" == out
 
     assert db.remove.call_count == 0
 
@@ -1074,17 +1074,17 @@ def test_sync_deletes_remote():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"bar\"]")
                 ostream = io.BytesIO()
                 assert 1 == ns.sync_deletes_remote(prefix, istream, ostream)
                 pu.assert_called_once()
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02" in out
-                assert b"\x00\x00\x00\x03foo" in out
-                assert b"\x00\x00\x00\x03bar" in out
+                assert b"\x00\x00\x00\x0E" in out
+                assert b"\"foo\"" in out
+                assert b"\"bar\"" in out
 
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
@@ -1119,17 +1119,17 @@ def test_sync_deletes_remote_no_deleted():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"bar\"]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_remote(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02" in out
-                assert b"\x00\x00\x00\x03foo" in out
-                assert b"\x00\x00\x00\x03bar" in out
+                assert b"\x00\x00\x00\x0E" in out
+                assert b"\"foo\"" in out
+                assert b"\"bar\"" in out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -1157,17 +1157,17 @@ def test_sync_deletes_remote_no_deleted_no_check():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"bar\"]")
                 ostream = io.BytesIO()
                 assert 1 == ns.sync_deletes_remote(prefix, istream, ostream, no_check=True)
                 pu.assert_called_once()
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02" in out
-                assert b"\x00\x00\x00\x03foo" in out
-                assert b"\x00\x00\x00\x03bar" in out
+                assert b"\x00\x00\x00\x0E" in out
+                assert b"\"foo\"" in out
+                assert b"\"bar\"" in out
 
     db.find.assert_called_once_with("bar")
     db.remove.assert_called_once_with("barfile")
@@ -1192,17 +1192,17 @@ def test_sync_deletes_remote_ghost():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x01\x00\x00\x00\x03bar")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x07[\"bar\"]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_remote(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02" in out
-                assert b"\x00\x00\x00\x03foo" in out
-                assert b"\x00\x00\x00\x03bar" in out
+                assert b"\x00\x00\x00\x0E" in out
+                assert b"\"foo\"" in out
+                assert b"\"bar\"" in out
 
     db.find.assert_called_once_with("bar")
     assert db.remove.call_count == 0
@@ -1224,17 +1224,17 @@ def test_sync_deletes_remote_none():
 
     with patch("notmuch2.Database", return_value=mock_ctx):
         with patch("pathlib.Path.unlink") as pu:
-            with patch.object(ns, "get_ids", return_value={"foo", "bar"}) as gi:
-                istream = io.BytesIO(b"\x00\x00\x00\x00")
+            with patch.object(ns, "get_ids", return_value=["foo", "bar"]) as gi:
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]")
                 ostream = io.BytesIO()
                 assert 0 == ns.sync_deletes_remote(prefix, istream, ostream)
                 assert pu.call_count == 0
                 gi.assert_called_once_with(prefix)
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x02" in out
-                assert b"\x00\x00\x00\x03foo" in out
-                assert b"\x00\x00\x00\x03bar" in out
+                assert b"\x00\x00\x00\x0E" in out
+                assert b"\"foo\"" in out
+                assert b"\"bar\"" in out
 
     assert db.remove.call_count == 0
 
@@ -1256,7 +1256,7 @@ def test_get_ids():
     db.get_document = MagicMock(return_value=doc)
 
     with patch("xapian.Database", return_value=db) as xdb:
-        assert {"a", "b", "c"} == ns.get_ids(prefix)
+        assert ["a", "b", "c"] == ns.get_ids(prefix)
         xdb.assert_called_once_with(prefix + ".notmuch/xapian")
         db.postlist.assert_called_once_with("Tghost")
         db.get_lastdocid.assert_called_once()

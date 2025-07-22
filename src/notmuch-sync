@@ -526,7 +526,7 @@ def get_ids(prefix):
 
     db.close()
 
-    return set(message_ids)
+    return message_ids
 
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
@@ -554,10 +554,7 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
 
     async def _recv_ids():
         logger.info("Receiving all message IDs from remote...")
-        size_data = from_stream.read(4)
-        transfer["read"] += 4
-        nids = struct.unpack("!I", size_data)[0]
-        ids["theirs"] = {read(from_stream).decode("utf-8") for _ in range(nids)}
+        ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
     async def _sync_ids():
         await asyncio.gather(_get_ids(), _recv_ids())
@@ -566,17 +563,13 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     logger.info("Message IDs synced.")
 
     async def _send_del_ids():
-        to_del_remote = ids["theirs"] - ids["mine"]
+        to_del_remote = list(set(ids["theirs"]) - set(ids["mine"]))
         logger.debug("Remote IDs to be deleted %s.", to_del_remote)
         logger.info("Sending message IDs to be deleted to remote...")
-        to_stream.write(struct.pack("!I", len(to_del_remote)))
-        transfer["write"] += 4
-        to_stream.flush()
-        for mid in to_del_remote:
-            write(mid.encode("utf-8"), to_stream)
+        write(json.dumps(to_del_remote).encode("utf-8"), to_stream)
 
     async def _del_ids():
-        to_del = ids["mine"] - ids["theirs"]
+        to_del = set(ids["mine"]) - set(ids["theirs"])
         logger.debug("Local IDs to be deleted %s.", to_del)
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
             for mid in to_del:
@@ -628,18 +621,9 @@ def sync_deletes_remote(prefix, from_stream, to_stream, no_check=False):
     """
     dels = 0
     ids = get_ids(prefix)
+    write(json.dumps(ids).encode("utf-8"), to_stream)
 
-    to_stream.write(struct.pack("!I", len(ids)))
-    transfer["write"] += 4
-    to_stream.flush()
-    for i in ids:
-        write(i.encode("utf-8"), to_stream)
-
-    size_data = from_stream.read(4)
-    transfer["read"] += 4
-    nids = struct.unpack("!I", size_data)[0]
-    to_del = [ read(from_stream).decode("utf-8") for _ in range(nids) ]
-
+    to_del = json.loads(read(from_stream).decode("utf-8"))
     with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
         for mid in to_del:
             try:
