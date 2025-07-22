@@ -284,18 +284,11 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     async def _send_hashes_req():
         logger.info("Requesting %s hashes from remote...", len(hashes["req_mine"]))
         logger.debug("Requesting hashes %s", hashes["req_mine"])
-        to_stream.write(struct.pack("!I", len(hashes["req_mine"])))
-        transfer["write"] += 4
-        to_stream.flush()
-        for f in hashes["req_mine"]:
-            write(f.encode("utf-8"), to_stream)
+        write(json.dumps(hashes["req_mine"]).encode("utf-8"), to_stream)
 
     async def _recv_hashes_req():
         logger.info("Receiving requested hashes from remote...")
-        size_data = from_stream.read(4)
-        transfer["read"] += 4
-        nfiles = struct.unpack("!I", size_data)[0]
-        hashes["req_theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
+        hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
         logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
 
     async def _sync_reqs():
@@ -306,18 +299,11 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     async def _send_hashes():
         logger.info("Hashing %s requested files and sending to remote...", len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
-        to_stream.write(struct.pack("!I", len(tmp)))
-        transfer["write"] += 4
-        to_stream.flush()
-        for h in tmp:
-            write(h.encode("utf-8"), to_stream)
+        write(json.dumps(tmp).encode("utf-8"), to_stream)
 
     async def _receive_hashes():
         logger.info("Receiving hashes from remote...")
-        size_data = from_stream.read(4)
-        transfer["read"] += 4
-        nhashes = struct.unpack("!I", size_data)[0]
-        tmp = [ read(from_stream).decode("utf-8") for _ in range(nhashes) ]
+        tmp = json.loads(read(from_stream).decode("utf-8"))
         hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
 
     async def _sync():
@@ -441,18 +427,11 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
 
     async def _send_fnames():
         logger.info("Sending file names missing on local...")
-        to_stream.write(struct.pack("!I", len(files["mine"])))
-        transfer["write"] += 4
-        to_stream.flush()
-        for f in files["mine"]:
-            write(f["name"].encode("utf-8"), to_stream)
+        write(json.dumps([f["name"] for f in files["mine"]]).encode("utf-8"), to_stream)
 
     async def _recv_fnames():
         logger.info("Receiving file names missing on remote...")
-        size_data = from_stream.read(4)
-        transfer["read"] += 4
-        nfiles = struct.unpack("!I", size_data)[0]
-        files["theirs"] = [ read(from_stream).decode("utf-8") for _ in range(nfiles) ]
+        files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
     async def _sync_fnames():
         await asyncio.gather(_send_fnames(), _recv_fnames())
@@ -681,11 +660,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
     logger.debug("Local mbsync files to be updated from remote %s.", pull)
     logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
-    to_stream.write(struct.pack("!I", len(pull)))
-    transfer["write"] += 4
-    to_stream.flush()
-    for f in pull:
-        write(f.encode("utf-8"), to_stream)
+    write(json.dumps(pull).encode("utf-8"), to_stream)
 
     async def _send_mbsync_files():
         push = [ f for f in mbsync["theirs"].keys()
@@ -694,11 +669,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
 
         logger.debug("mbsync files to update on remote %s.", push)
         logger.info("Sending %s mbsync files to remote...", len(push))
-        to_stream.write(struct.pack("!I", len(push)))
-        transfer["write"] += 4
-        to_stream.flush()
-        for f in push:
-            write(f.encode("utf-8"), to_stream)
+        write(json.dumps(push).encode("utf-8"), to_stream)
         for idx, f in enumerate(push):
             logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
                          len(push), f)
@@ -731,21 +702,14 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
                for pat in [".uidvalidity", ".mbsyncstate"]
                for f in Path(prefix).rglob(pat) }
     write(json.dumps(mbsync).encode("utf-8"), to_stream)
-
-    size_data = from_stream.read(4)
-    transfer["read"] += 4
-    nams = struct.unpack("!I", size_data)[0]
-    push = [read(from_stream).decode("utf-8") for _ in range(nams)]
+    push = json.loads(read(from_stream).decode("utf-8"))
 
     async def _send_mbsync_files():
         for f in push:
             send_file(os.path.join(prefix, f), to_stream)
 
     async def _recv_mbsync_files():
-        size_data = from_stream.read(4)
-        transfer["read"] += 4
-        nams = struct.unpack("!I", size_data)[0]
-        pull = [read(from_stream).decode("utf-8") for _ in range(nams)]
+        pull = json.loads(read(from_stream).decode("utf-8"))
         for f in pull:
             recv_file(os.path.join(prefix, f), from_stream,
                       overwrite_raise=False)

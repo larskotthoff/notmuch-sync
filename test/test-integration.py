@@ -213,7 +213,7 @@ def test_sync_tags_files_verbose(shell):
             assert 'Getting change numbers from remote...' in out[25]
             assert 'local:  1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[26]
             assert 'remote: 1 new messages,\t1 new files,\t0 files copied/moved,\t0 files deleted,\t2 messages with tag changes,\t0 messages deleted' in out[27]
-            assert '9094/4284 bytes received from/sent to remote.' in out[28]
+            assert '9098/4288 bytes received from/sent to remote.' in out[28]
 
 
 def test_sync_tags_files(shell):

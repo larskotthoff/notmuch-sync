@@ -215,18 +215,12 @@ The communication protocol is binary. This is what the script produces on stdout
 - 36 bytes UUID of notmuch database
 - 4 bytes unsigned int length of JSON-encoded changes
 - JSON-encoded changes
-- 4 bytes unsigned int number of files requested hashes for from other side
-- for each of the hashes requested from the other side:
-    - 4 bytes unsigned int length of file name
-    - file name
-- 4 bytes unsigned int number of hashes to be sent back
-- for each of the hashes requested by the other side:
-    - 4 bytes unsigned int length of hash
-    - hash
-- 4 bytes unsigned int number of files requested
-- for each of the files requested from the other side:
-    - 4 bytes unsigned int length of file name
-    - file name
+- 4 bytes unsigned int length of JSON-encoded files requested hashes for from other side
+- JSON-encoded files requested hashes for from other side
+- 4 bytes unsigned int length of JSON-encoded hashes to be sent back
+- JSON-encoded hashes to be sent back
+- 4 bytes unsigned int length of JSON-encoded file names requested from the other side
+- JSON-encoded file names requested from the other side
 - for each of the files requested by the other side:
     - 4 bytes unsigned int length of requested file
     - requested file
@@ -242,18 +236,18 @@ The communication protocol is binary. This is what the script produces on stdout
         - 4 bytes unsigned int length of JSON-encoded stat (name and mtime) of
           all .mbsyncstate/.uidvalidity files
         - JSON-encoded stat of all .mbsyncstate/.uidvalidity files
+        - 4 bytes unsigned int length of JSON-encoded files to send from remote to local
+        - JSON-encoded files to send from remote to local
         - for each file to send from remote to local:
             - 4 bytes unsigned int length of requested file
             - requested file
     - local to remote:
         - 4 bytes unsigned int length of JSON-encoded list of files for remote
           to send to local
-        - 4 bytes length of list of files for remote to send to local
-        - list of files for remote to send to local
+        - JSON-encoded list of files for remote to send to local
         - 4 bytes unsigned int length of JSON-encoded list of files for local
           to send to remote
-        - 4 bytes length of list of files for local to send to remote
-        - list of files for local to send to remote
+        - JSON-encoded list of files for local to send to remote
         - for each file to send from local to remote:
             - 4 bytes unsigned int length of requested file
             - requested file
