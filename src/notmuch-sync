@@ -673,14 +673,21 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
         for idx, f in enumerate(push):
             logger.debug("%s/%s Sending mbsync file %s to remote...", idx + 1,
                          len(push), f)
+            to_stream.write(struct.pack("!d", mbsync["mine"][f]))
+            to_stream.flush()
+            transfer["write"] += 8
             send_file(os.path.join(prefix, f), to_stream)
 
     async def _recv_mbsync_files():
         for idx, f in enumerate(pull):
             logger.debug("%s/%s Receiving mbsync file %s from remote...",
                          idx + 1, len(pull), f)
-            recv_file(os.path.join(prefix, f), from_stream,
-                      overwrite_raise=False)
+            mtime_data = from_stream.read(8)
+            transfer["read"] += 8
+            mtime = struct.unpack("!d", mtime_data)[0]
+            fname = os.path.join(prefix, f)
+            recv_file(fname, from_stream, overwrite_raise=False)
+            os.utime(fname, (mtime, mtime))
 
     async def _sync_mbsync_files():
         await asyncio.gather(_send_mbsync_files(), _recv_mbsync_files())
@@ -706,13 +713,21 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
 
     async def _send_mbsync_files():
         for f in push:
-            send_file(os.path.join(prefix, f), to_stream)
+            fname = os.path.join(prefix, f)
+            to_stream.write(struct.pack("!d", Path(fname).stat().st_mtime))
+            to_stream.flush()
+            transfer["write"] += 8
+            send_file(fname, to_stream)
 
     async def _recv_mbsync_files():
         pull = json.loads(read(from_stream).decode("utf-8"))
         for f in pull:
-            recv_file(os.path.join(prefix, f), from_stream,
-                      overwrite_raise=False)
+            mtime_data = from_stream.read(8)
+            transfer["read"] += 8
+            mtime = struct.unpack("!d", mtime_data)[0]
+            fname = os.path.join(prefix, f)
+            recv_file(fname, from_stream, overwrite_raise=False)
+            os.utime(fname, (mtime, mtime))
 
     async def _sync_mbsync_files():
         await asyncio.gather(_send_mbsync_files(), _recv_mbsync_files())

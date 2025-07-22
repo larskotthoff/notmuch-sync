@@ -239,6 +239,7 @@ The communication protocol is binary. This is what the script produces on stdout
         - 4 bytes unsigned int length of JSON-encoded files to send from remote to local
         - JSON-encoded files to send from remote to local
         - for each file to send from remote to local:
+            - 8 bytes last mtime of requested file
             - 4 bytes unsigned int length of requested file
             - requested file
     - local to remote:
@@ -249,6 +250,7 @@ The communication protocol is binary. This is what the script produces on stdout
           to send to remote
         - JSON-encoded list of files for local to send to remote
         - for each file to send from local to remote:
+            - 8 bytes last mtime of requested file
             - 4 bytes unsigned int length of requested file
             - requested file
 - from remote only: 6 x 4 bytes with number of tag changes, copied/moved files, deleted files, new messages, deleted messages, new files

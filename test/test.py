@@ -3,6 +3,7 @@ import os
 import sys
 import io
 import json
+import stat
 import struct
 from unittest.mock import MagicMock, PropertyMock, call, mock_open, patch
 from tempfile import NamedTemporaryFile, TemporaryDirectory, gettempdir
@@ -1295,33 +1296,41 @@ def test_sync_mbsync_local():
         m1 = MagicMock()
         m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
         s1 = lambda: None
-        s1.st_mtime = 1
+        s1.st_mtime = 1.0
         m1.stat = MagicMock(return_value=s1)
         m2 = MagicMock()
         m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
         s2 = lambda: None
-        s2.st_mtime = 0
+        s2.st_mtime = 0.0
         m2.stat = MagicMock(return_value=s2)
 
-        def effect(*args, **kwargs):
+        def effect_glob(*args, **kwargs):
             yield [m1]
             yield [m2]
+        def effect_stat(*args, **kwargs):
+            yield m1
+            yield m2
 
         with patch("pathlib.Path.rglob") as pr:
-            pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x23{\".uidvalidity\":0,\".mbsyncstate\":1}\x00\x00\x00\x01b")
+            pr.side_effect = effect_glob()
+            istream = io.BytesIO(b"\x00\x00\x00\x27{\".uidvalidity\":0.0,\".mbsyncstate\":1.0}\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01b")
             ostream = io.BytesIO()
-            with patch("builtins.open", mock_open(read_data=b"a")) as o:
-                ns.sync_mbsync_local(tmpdir, istream, ostream)
-                assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
-                assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
-                hdl = o()
-                hdl.read.assert_called_once()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert b"b" == args[0]
+            with patch("pathlib.Path.stat") as ps:
+                ps.side_effect = effect_stat()
+                with patch("pathlib.Path.mkdir") as pm:
+                    with patch("os.utime") as ut:
+                        with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                            ns.sync_mbsync_local(tmpdir, istream, ostream)
+                            assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
+                            assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
+                            hdl = o()
+                            hdl.read.assert_called_once()
+                            hdl.write.assert_called_once()
+                            args = hdl.write.call_args.args
+                            assert b"b" == args[0]
+                            assert ut.mock_calls == [call(tmpdir + ".mbsyncstate", (0.0, 0.0))]
 
-            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == ostream.getvalue()
+            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01a" == ostream.getvalue()
 
 
 def test_sync_mbsync_local_no_changes():
@@ -1360,28 +1369,36 @@ def test_sync_mbsync_local_missing():
         m1 = MagicMock()
         m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
         s1 = lambda: None
-        s1.st_mtime = 1
+        s1.st_mtime = 1.0
         m1.stat = MagicMock(return_value=s1)
 
-        def effect(*args, **kwargs):
+        def effect_glob(*args, **kwargs):
             yield [m1]
             yield []
+        def effect_stat(*args, **kwargs):
+            while True:
+                yield m1
 
         with patch("pathlib.Path.rglob") as pr:
-            pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x12{\".mbsyncstate\":1}\x00\x00\x00\x01b")
+            pr.side_effect = effect_glob()
+            istream = io.BytesIO(b"\x00\x00\x00\x14{\".mbsyncstate\":1.0}\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01b")
             ostream = io.BytesIO()
-            with patch("builtins.open", mock_open(read_data=b"a")) as o:
-                ns.sync_mbsync_local(tmpdir, istream, ostream)
-                assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
-                assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
-                hdl = o()
-                hdl.read.assert_called_once()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert b"b" == args[0]
+            with patch("pathlib.Path.stat") as ps:
+                ps.side_effect = effect_stat()
+                with patch("pathlib.Path.mkdir") as pm:
+                    with patch("os.utime") as ut:
+                        with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                            ns.sync_mbsync_local(tmpdir, istream, ostream)
+                            assert call(tmpdir + ".uidvalidity", "rb") in o.mock_calls
+                            assert call(tmpdir + ".mbsyncstate", "wb") in o.mock_calls
+                            hdl = o()
+                            hdl.read.assert_called_once()
+                            hdl.write.assert_called_once()
+                            args = hdl.write.call_args.args
+                            assert b"b" == args[0]
+                            assert ut.mock_calls == [call(tmpdir + ".mbsyncstate", (0.0, 0.0))]
 
-            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a" == ostream.getvalue()
+            assert b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01a" == ostream.getvalue()
 
 
 def test_sync_mbsync_remote_nothing():
@@ -1407,34 +1424,44 @@ def test_sync_mbsync_remote():
         m1 = MagicMock()
         m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
         s1 = lambda: None
-        s1.st_mtime = 0
+        s1.st_mtime = 0.0
         m1.stat = MagicMock(return_value=s1)
         m2 = MagicMock()
         m2.__str__ = MagicMock(return_value=(tmpdir + ".mbsyncstate"))
         s2 = lambda: None
-        s2.st_mtime = 1
+        s2.st_mtime = 1.0
         m2.stat = MagicMock(return_value=s2)
 
-        def effect(*args, **kwargs):
+        def effect_glob(*args, **kwargs):
             yield [m1]
             yield [m2]
+        def effect_stat(*args, **kwargs):
+            yield m1
+            yield m2
+            yield m1
+            yield m2
 
         with patch("pathlib.Path.rglob") as pr:
-            pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01a")
+            pr.side_effect = effect_glob()
+            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01a")
             ostream = io.BytesIO()
-            with patch("builtins.open", mock_open(read_data=b"b")) as o:
-                ns.sync_mbsync_remote(tmpdir, istream, ostream)
-                assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
-                assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
-                hdl = o()
-                hdl.read.assert_called_once()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert b"a" == args[0]
+            with patch("pathlib.Path.stat") as ps:
+                ps.side_effect = effect_stat()
+                with patch("pathlib.Path.mkdir") as pm:
+                    with patch("os.utime") as ut:
+                        with patch("builtins.open", mock_open(read_data=b"b")) as o:
+                            ns.sync_mbsync_remote(tmpdir, istream, ostream)
+                            assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
+                            assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
+                            hdl = o()
+                            hdl.read.assert_called_once()
+                            hdl.write.assert_called_once()
+                            args = hdl.write.call_args.args
+                            assert b"a" == args[0]
+                            assert ut.mock_calls == [call(tmpdir + ".uidvalidity", (1.0, 1.0))]
 
                 out = ostream.getvalue()
-                assert b"\x00\x00\x00\x26{\".uidvalidity\": 0, \".mbsyncstate\": 1}\x00\x00\x00\x01b" == out
+                assert b"\x00\x00\x00\x2A{\".uidvalidity\": 0.0, \".mbsyncstate\": 1.0}\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01b" == out
 
 
 def test_sync_mbsync_remote_no_changes():
@@ -1473,29 +1500,37 @@ def test_sync_mbsync_remote_missing():
         m1 = MagicMock()
         m1.__str__ = MagicMock(return_value=(tmpdir + ".uidvalidity"))
         s1 = lambda: None
-        s1.st_mtime = 1
+        s1.st_mtime = 1.0
         m1.stat = MagicMock(return_value=s1)
 
-        def effect(*args, **kwargs):
+        def effect_glob(*args, **kwargs):
             yield [m1]
             yield []
+        def effect_stat(*args, **kwargs):
+            while True:
+                yield m1
 
         with patch("pathlib.Path.rglob") as pr:
-            pr.side_effect = effect()
-            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x00\x00\x00\x01b")
+            pr.side_effect = effect_glob()
+            istream = io.BytesIO(b"\x00\x00\x00\x10[\".mbsyncstate\"]\x00\x00\x00\x10[\".uidvalidity\"]\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01b")
             ostream = io.BytesIO()
-            with patch("builtins.open", mock_open(read_data=b"a")) as o:
-                ns.sync_mbsync_remote(tmpdir, istream, ostream)
-                assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
-                assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
-                hdl = o()
-                hdl.read.assert_called_once()
-                hdl.write.assert_called_once()
-                args = hdl.write.call_args.args
-                assert b"b" == args[0]
+            with patch("pathlib.Path.stat") as ps:
+                ps.side_effect = effect_stat()
+                with patch("pathlib.Path.mkdir") as pm:
+                    with patch("os.utime") as ut:
+                        with patch("builtins.open", mock_open(read_data=b"a")) as o:
+                            ns.sync_mbsync_remote(tmpdir, istream, ostream)
+                            assert call(tmpdir + ".uidvalidity", "wb") in o.mock_calls
+                            assert call(tmpdir + ".mbsyncstate", "rb") in o.mock_calls
+                            hdl = o()
+                            hdl.read.assert_called_once()
+                            hdl.write.assert_called_once()
+                            args = hdl.write.call_args.args
+                            assert b"b" == args[0]
+                            assert ut.mock_calls == [call(tmpdir + ".uidvalidity", (1.0, 1.0))]
 
             out = ostream.getvalue()
-            assert b"\x00\x00\x00\x13{\".uidvalidity\": 1}\x00\x00\x00\x01a" == out
+            assert b"\x00\x00\x00\x15{\".uidvalidity\": 1.0}\x3F\xF0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01a" == out
 
 
 def test_digest():
