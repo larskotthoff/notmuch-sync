@@ -18,6 +18,7 @@ dependencies = [
     "notmuch2",
     "xapian-bindings",
 ]
+readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 classifiers = [
