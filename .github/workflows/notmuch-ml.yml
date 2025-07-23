@@ -217,3 +217,7 @@ jobs:
     - run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
     - run: notmuch new
     - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+
+    # delete sync files, then sync
+    - run: sudo rm -f $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /home/synctest/notmuch-list/.notmuch/notmuch-sync-*
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
