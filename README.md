@@ -7,7 +7,11 @@
 
 mbsync-compatible syncing of notmuch databases and mail files.
 
+[PyPI page](https://pypi.org/project/notmuch-sync/)
+
 ## Quickstart
+
+Install with e.g. `pip install notmuch-sync`.
 
 Run as e.g. `notmuch-sync --verbose --delete --remote my.mail.server --user
 user`. This assumes that you can connect to `my.mail.server` using SSH with user
