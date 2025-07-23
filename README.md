@@ -13,7 +13,8 @@ mbsync-compatible syncing of notmuch databases and mail files.
 
 Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
 Install with e.g. `pip install notmuch-sync`. No configuration is necessary;
-everything is picked up from notmuch.
+everything is picked up from notmuch. You may however need to install your OS'
+packages for xapian.
 
 Before you run `notmuch-sync` for the first time, make sure that notmuch is set
 up correctly (in particular with the correct database path). It is not necessary
