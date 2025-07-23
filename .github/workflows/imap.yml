@@ -13,7 +13,7 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    - run: sudo cp $GITHUB_WORKSPACE/src/notmuch-sync /usr/bin/
+    - run: sudo cp $GITHUB_WORKSPACE/src/notmuch_sync.py /usr/bin/notmuch-sync
     
     - name: Install dependencies
       run: |

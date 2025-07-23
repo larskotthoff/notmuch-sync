@@ -10,11 +10,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory, gettempdir
 
 import notmuch2
 
-from importlib.util import spec_from_loader, module_from_spec
-from importlib.machinery import SourceFileLoader 
-spec = spec_from_loader("notmuch-sync", SourceFileLoader("notmuch-sync", "src/notmuch-sync"))
-ns = module_from_spec(spec)
-spec.loader.exec_module(ns)
+import src.notmuch_sync as ns
 
 prefix = gettempdir() + os.sep
 

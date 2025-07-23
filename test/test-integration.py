@@ -16,7 +16,7 @@ def write_conf(path):
 
 
 def sync(shell, local_conf, remote_conf, verbose=False, delete=False, mbsync=False):
-    args = ["./src/notmuch-sync", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch-sync {"--delete" if delete else ""} {"--mbsync" if mbsync else ""}'"]
+    args = ["./src/notmuch_sync.py", "--remote-cmd", f"bash -c 'NOTMUCH_CONFIG={remote_conf} ./src/notmuch_sync.py {"--delete" if delete else ""} {"--mbsync" if mbsync else ""}'"]
     if verbose:
         args.append("--verbose")
     if delete:

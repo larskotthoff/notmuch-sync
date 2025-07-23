@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""notmuch-sync: Synchronize notmuch email databases and message files between
+"""notmuch_sync: Synchronize notmuch email databases and message files between
 local and remote systems."""
 
 import argparse

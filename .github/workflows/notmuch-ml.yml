@@ -13,7 +13,7 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-    - run: sudo cp $GITHUB_WORKSPACE/src/notmuch-sync /usr/bin/
+    - run: sudo cp $GITHUB_WORKSPACE/src/notmuch_sync.py /usr/bin/notmuch-sync
 
     - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 python3-xapian wget ssh expect
 
