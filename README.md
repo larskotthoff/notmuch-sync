@@ -11,7 +11,14 @@ mbsync-compatible syncing of notmuch databases and mail files.
 
 ## Quickstart
 
-Install with e.g. `pip install notmuch-sync`.
+Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
+Install with e.g. `pip install notmuch-sync`. No configuration is necessary;
+everything is picked up from notmuch.
+
+Before you run `notmuch-sync` for the first time, make sure that notmuch is set
+up correctly (in particular with the correct database path). It is not necessary
+to copy mails and tags; this will be done automatically by `notmuch-sync` on
+first run if one of the sides is a new, empty notmuch database.
 
 Run as e.g. `notmuch-sync --verbose --delete --remote my.mail.server --user
 user`. This assumes that you can connect to `my.mail.server` using SSH with user
@@ -166,21 +173,6 @@ deleting them is smaller than the interval between syncs (e.g. one side hasn't
 been synced in a long time), deleted messages will reappear when synced. This is
 because one side will have no record of the "deleted" tag and will only see
 messages not present that are not tagged "deleted".
-
-
-## Installation and Setup
-
-Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
-You may need to install additional Python packages (in
-[requirements.txt](https://github.com/larskotthoff/notmuch-sync/blob/main/requirements.txt)).
-
-Copy `notmuch-sync` into a directory in your $PATH on all machines that you want
-to sync. No configuration is necessary; everything is picked up from notmuch.
-
-Before you run `notmuch-sync` for the first time, make sure that notmuch is set
-up correctly (in particular with the correct database path). It is not necessary
-to copy mails and tags; this will be done automatically by `notmuch-sync` on
-first run if one of the sides is a new, empty notmuch database.
 
 
 ## Limitations
