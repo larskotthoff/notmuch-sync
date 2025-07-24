@@ -62,7 +62,9 @@ def write(data, stream):
     """
     stream.write(struct.pack("!I", len(data)))
     transfer["write"] += 4
-    stream.write(data)
+    written = stream.write(data)
+    if written < len(data):
+        sys.exit(f"Tried to write {len(data)} bytes, but wrote only {written}, aborting...")
     transfer["write"] += len(data)
     stream.flush()
 
@@ -80,8 +82,11 @@ def read(stream):
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
+    read = stream.read(size)
+    if len(read) < size:
+        sys.exit(f"Tried to read {size} bytes, but read only {len(read)}, aborting...")
     transfer["read"] += size
-    return stream.read(size)
+    return read
 
 
 def get_changes(db, revision, prefix, sync_file):

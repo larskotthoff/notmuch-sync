@@ -408,7 +408,7 @@ def test_missing_files_inconsistent_no_move():
     with patch("shutil.move") as sm:
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x46[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x44[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
                 ostream = io.BytesIO()
                 m.filenames = MagicMock(return_value=[f1.name])
                 f1.write("mail one")
@@ -442,7 +442,7 @@ def test_missing_files_inconsistent_move():
     with patch("shutil.move") as sm:
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x46[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x44[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
                 ostream = io.BytesIO()
                 m.filenames = MagicMock(return_value=[f1.name])
                 f1.write("mail one")
@@ -476,7 +476,7 @@ def test_missing_files_moved():
     with patch("shutil.move") as sm:
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x46[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x44[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
                 ostream = io.BytesIO()
                 m.filenames = MagicMock(return_value=[f1.name])
                 f1.write("mail one")
@@ -508,7 +508,7 @@ def test_missing_files_copied():
     f.close()
     with patch("shutil.copy") as sc:
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x8C[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+            istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x88[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
             ostream = io.BytesIO()
             m.filenames = MagicMock(return_value=[f1.name])
             f1.write("mail one")
@@ -538,7 +538,7 @@ def test_missing_files_added():
         with patch("shutil.move") as sm:
             with patch("pathlib.Path.unlink") as pu:
                 with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
-                    istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x4C[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"abc\"]")
+                    istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x4B[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"abc\"]")
                     ostream = io.BytesIO()
                     m.filenames = MagicMock(return_value=[f1.name])
                     f1.write("mail one")
@@ -637,7 +637,7 @@ def test_missing_files_copy_delete():
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
                 with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
                     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
-                        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x46[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x44[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
                         ostream = io.BytesIO()
                         m.filenames = MagicMock(return_value=[f1.name, f3.name])
                         f1.write("mail one")
@@ -676,7 +676,7 @@ def test_missing_files_delete_mismatch():
     with patch("pathlib.Path.unlink") as pu:
         with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
             with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
-                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x46[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x44[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
                 ostream = io.BytesIO()
                 m.filenames = MagicMock(return_value=[f1.name])
                 f1.write("mail two")
