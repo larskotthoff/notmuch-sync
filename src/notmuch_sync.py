@@ -787,6 +787,7 @@ def sync_local(args):
         cmd = shlex.split(args.ssh_cmd) + rargs
 
     logger.info("Connecting to remote...")
+    logger.debug("Command to connect to remote: %s", cmd)
     with subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
