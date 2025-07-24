@@ -137,46 +137,46 @@ jobs:
     - run: diff -u /tmp/files.local /tmp/files.remote
 
     # same again, but kill process to check that it works when interrupted
-    #- run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
-    #- run: sudo -u synctest notmuch tag +deleted id:1517815399.2w186vjjm2.astroid@strange.none
-    #- run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
-    #- run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
-    #- run: notmuch new
-    #- run: sudo -u synctest notmuch search --output=files tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
-    #- run: sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
-    #- run: sudo -u synctest notmuch new
-    #- run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    #- run: cp /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
-    #- run: notmuch new
-    #- run: sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
-    #- run: sudo -u synctest notmuch new
-    #- run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    #- run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
-    #- run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
-    #- run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Tags synced.\" { close }"
-    #- run: diff `ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*)`
-    #- run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
-    #- run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    #- run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: time notmuch-sync --delete --verbose --remote localhost --user synctest
-    #- run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
-    #- run: notmuch dump | sort > /tmp/dump.local
-    #- run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
-    #- run: diff -u /tmp/dump.local /tmp/dump.remote
-    #- run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    #- run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
-    #- run: diff -u /tmp/files.local /tmp/files.remote
-    #- run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
-    #- run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
-    #- run: diff -u /tmp/files.local /tmp/files.remote
+    - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none
+    - run: sudo -u synctest notmuch tag +deleted id:1517815399.2w186vjjm2.astroid@strange.none
+    - run: time notmuch-sync --delete --verbose --verbose --remote localhost --user synctest
+    - run: mv `notmuch search --output=files tag:deleted and id:1517843248.cvlu0mp4mk.astroid@strange.none` /tmp/temp1.mail
+    - run: notmuch new
+    - run: sudo -u synctest notmuch search --output=files tag:deleted and id:1517815399.2w186vjjm2.astroid@strange.none > /tmp/todel
+    - run: sudo -u synctest mv `cat /tmp/todel` /tmp/temp2.mail
+    - run: sudo -u synctest notmuch new
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: cp /tmp/temp2.mail $GITHUB_WORKSPACE/notmuch-list/
+    - run: notmuch new
+    - run: sudo -u synctest cp /tmp/temp1.mail /home/synctest/notmuch-list/
+    - run: sudo -u synctest notmuch new
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
+    - run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
+    - run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Tags synced.\" { close }"
+    - run: diff `ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*)`
+    - run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X0" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: time notmuch-sync --delete --verbose --remote localhost --user synctest
+    - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
+    - run: notmuch dump | sort > /tmp/dump.local
+    - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
+    - run: diff -u /tmp/dump.local /tmp/dump.remote
+    - run: notmuch search --output=files '*' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest notmuch search --output=files '*' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
+    - run: find $GITHUB_WORKSPACE/notmuch-list -type f | grep -v '\.notmuch' | sed "s|$GITHUB_WORKSPACE||" | sort > /tmp/files.local
+    - run: sudo -u synctest find /home/synctest/notmuch-list -type f | grep -v '\.notmuch' | sed "s|/home/synctest||" | sort > /tmp/files.remote
+    - run: diff -u /tmp/files.local /tmp/files.remote
 
     # no `notmuch new` after moving file there -- file already there, same checksum as copied
     - run: notmuch tag +deleted id:1517843248.cvlu0mp4mk.astroid@strange.none

@@ -4,7 +4,7 @@
 local and remote systems."""
 
 import argparse
-import concurrent.futures
+import asyncio
 import hashlib
 import json
 import logging
@@ -14,6 +14,8 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
+import threading
 
 from pathlib import Path
 from select import select
@@ -89,19 +91,18 @@ def read(stream):
     return data
 
 
-def run_concurrently(m1, m2):
+def run_async(m1, m2):
     """
-    Run two functions concurrently. Used to read/write to streams at the same
-    time.
+    Run two functions async. Used to read/write to streams at the same time.
 
     Args:
         m1: One function.
         m2: Other function.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        f1 = executor.submit(m1)
-        f2 = executor.submit(m2)
-        concurrent.futures.wait([f1, f2])
+    async def _tmp():
+        await asyncio.gather(m1(), m2())
+
+    asyncio.run(_tmp())
 
 
 def get_changes(db, revision, prefix, sync_file):
@@ -215,18 +216,18 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     uuids = {}
     uuids["mine"] = revision.uuid.decode()
 
-    def _send_uuid():
+    async def _send_uuid():
         logger.info("Sending UUID %s...", uuids["mine"])
         to_stream.write(uuids["mine"].encode("utf-8"))
         transfer["write"] += 36
         to_stream.flush()
 
-    def _recv_uuid():
+    async def _recv_uuid():
         logger.info("Receiving UUID...")
         uuids["theirs"] = from_stream.read(36).decode("utf-8")
         transfer["read"] += 36
 
-    run_concurrently(_send_uuid, _recv_uuid)
+    run_async(_send_uuid, _recv_uuid)
 
     logger.info("UUIDs synced.")
     logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
@@ -236,15 +237,15 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     logger.info("Computing local changes...")
     changes["mine"] = get_changes(dbw, revision, prefix, fname)
 
-    def _send_changes():
+    async def _send_changes():
         logger.info("Sending local changes...")
         write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
-    def _recv_changes():
+    async def _recv_changes():
         logger.info("Receiving remote changes...")
         changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    run_concurrently(_send_changes, _recv_changes)
+    run_async(_send_changes, _recv_changes)
 
     logger.info("Changes synced.")
     logger.debug("Local changes %s, remote changes %s.", changes["mine"], changes["theirs"])
@@ -296,30 +297,30 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         except LookupError:
             continue
 
-    def _send_hashes_req():
+    async def _send_hashes_req():
         logger.info("Requesting %s hashes from remote...", len(hashes["req_mine"]))
         logger.debug("Requesting hashes %s", hashes["req_mine"])
         write(json.dumps(hashes["req_mine"]).encode("utf-8"), to_stream)
 
-    def _recv_hashes_req():
+    async def _recv_hashes_req():
         logger.info("Receiving requested hashes from remote...")
         hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
         logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
 
-    run_concurrently(_send_hashes_req, _recv_hashes_req)
+    run_async(_send_hashes_req, _recv_hashes_req)
 
-    def _send_hashes():
+    async def _send_hashes():
         logger.info("Hashing %s requested files and sending to remote...",
                     len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         write(json.dumps(tmp).encode("utf-8"), to_stream)
 
-    def _recv_hashes():
+    async def _recv_hashes():
         logger.info("Receiving hashes from remote...")
         tmp = json.loads(read(from_stream).decode("utf-8"))
         hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
 
-    run_concurrently(_send_hashes, _recv_hashes)
+    run_async(_send_hashes, _recv_hashes)
 
     # now actually determine changes and move/copy
     for mid in changes_theirs:
@@ -435,25 +436,25 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
     files["mine"] = [ {"name": f, "id": mid} for mid in missing for f in missing[mid]["files"] ]
     changes = {"files": len(files["mine"]), "messages": 0}
 
-    def _send_fnames():
+    async def _send_fnames():
         logger.info("Sending file names missing on local...")
         write(json.dumps([f["name"] for f in files["mine"]]).encode("utf-8"), to_stream)
 
-    def _recv_fnames():
+    async def _recv_fnames():
         logger.info("Receiving file names missing on remote...")
         files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    run_concurrently(_send_fnames, _recv_fnames)
+    run_async(_send_fnames, _recv_fnames)
 
     logger.info("Missing file names synced.")
 
-    def _send_files():
+    async def _send_files():
         for idx, fname in enumerate(files["theirs"]):
             logger.info("%s/%s Sending %s...", idx + 1, len(files["theirs"]),
                         fname)
             send_file(os.path.join(prefix, fname), to_stream)
 
-    def _recv_files():
+    async def _recv_files():
         for idx, f in enumerate(files["mine"]):
             logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
             dst = os.path.join(prefix, f["name"])
@@ -473,7 +474,7 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
                     for tag in missing[f["id"]]["tags"]:
                         msg.tags.add(tag)
 
-    run_concurrently(_send_files, _recv_files)
+    run_async(_send_files, _recv_files)
 
     logger.info("Missing files synced.")
 
@@ -534,24 +535,24 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     ids = {}
     dels = {'a': 0}
 
-    def _get_ids():
+    async def _get_ids():
         ids["mine"] = get_ids(prefix)
 
-    def _recv_ids():
+    async def _recv_ids():
         logger.info("Receiving all message IDs from remote...")
         ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    run_concurrently(_get_ids, _recv_ids)
+    run_async(_get_ids, _recv_ids)
 
     logger.info("Message IDs synced.")
 
-    def _send_del_ids():
+    async def _send_del_ids():
         to_del_remote = list(set(ids["theirs"]) - set(ids["mine"]))
         logger.debug("Remote IDs to be deleted %s.", to_del_remote)
         logger.info("Sending message IDs to be deleted to remote...")
         write(json.dumps(to_del_remote).encode("utf-8"), to_stream)
 
-    def _recv_del_ids():
+    async def _recv_del_ids():
         to_del = set(ids["mine"]) - set(ids["theirs"])
         logger.debug("Local IDs to be deleted %s.", to_del)
         with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
@@ -581,7 +582,7 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
                     # already deleted? doesn't matter
                     pass
 
-    run_concurrently(_send_del_ids, _recv_del_ids)
+    run_async(_send_del_ids, _recv_del_ids)
 
     return dels["a"]
 
@@ -641,17 +642,17 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     """
     mbsync = {}
 
-    def _get_mbsync():
+    async def _get_mbsync():
         logger.info("Getting local mbsync file stats...")
         mbsync["mine"] = { str(f).removeprefix(prefix): f.stat().st_mtime
                            for pat in [".uidvalidity", ".mbsyncstate"]
                            for f in Path(prefix).rglob(pat) }
 
-    def _recv_mbsync():
+    async def _recv_mbsync():
         logger.info("Receiving mbsync file stats from remote...")
         mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    run_concurrently(_get_mbsync, _recv_mbsync)
+    run_async(_get_mbsync, _recv_mbsync)
 
     logger.info("mbsync file stats synced.")
 
@@ -662,7 +663,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
     write(json.dumps(pull).encode("utf-8"), to_stream)
 
-    def _send_mbsync_files():
+    async def _send_mbsync_files():
         push = [ f for f in mbsync["theirs"].keys()
                 if (f in mbsync["mine"] and mbsync["mine"][f] > mbsync["theirs"][f]) ]
         push += list(set(mbsync["mine"].keys()) - set(mbsync["theirs"].keys()))
@@ -678,7 +679,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(os.path.join(prefix, f), to_stream)
 
-    def _recv_mbsync_files():
+    async def _recv_mbsync_files():
         for idx, f in enumerate(pull):
             logger.debug("%s/%s Receiving mbsync file %s from remote...",
                          idx + 1, len(pull), f)
@@ -689,7 +690,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             recv_file(fname, from_stream, overwrite_raise=False)
             os.utime(fname, (mtime, mtime))
 
-    run_concurrently(_send_mbsync_files, _recv_mbsync_files)
+    run_async(_send_mbsync_files, _recv_mbsync_files)
 
     logger.info("mbsync files synced.")
 
@@ -709,7 +710,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
     write(json.dumps(mbsync).encode("utf-8"), to_stream)
     push = json.loads(read(from_stream).decode("utf-8"))
 
-    def _send_mbsync_files():
+    async def _send_mbsync_files():
         for f in push:
             fname = os.path.join(prefix, f)
             to_stream.write(struct.pack("!d", Path(fname).stat().st_mtime))
@@ -717,7 +718,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(fname, to_stream)
 
-    def _recv_mbsync_files():
+    async def _recv_mbsync_files():
         pull = json.loads(read(from_stream).decode("utf-8"))
         for f in pull:
             mtime_data = from_stream.read(8)
@@ -727,7 +728,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
             recv_file(fname, from_stream, overwrite_raise=False)
             os.utime(fname, (mtime, mtime))
 
-    run_concurrently(_send_mbsync_files, _recv_mbsync_files)
+    run_async(_send_mbsync_files, _recv_mbsync_files)
 
 
 def sync_remote(args):
@@ -776,46 +777,61 @@ def sync_local(args):
 
     logger.info("Connecting to remote...")
     logger.debug("Command to connect to remote: %s", cmd)
-    with subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            ) as proc:
-        from_remote = proc.stdout
-        err_remote = proc.stderr
-        to_remote = proc.stdin
+    with tempfile.TemporaryDirectory() as temp_dir:
+        stdout_pipe = os.path.join(temp_dir, 'stdout')
+        stderr_pipe = os.path.join(temp_dir, 'stderr')
+        stdin_pipe = os.path.join(temp_dir, 'stdin')
+        os.mkfifo(stdout_pipe)
+        os.mkfifo(stderr_pipe)
+        os.mkfifo(stdin_pipe)
+        fifos = {}
 
-        data = b''
-        try:
-            with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                prefix = os.path.join(str(dbw.default_path()), '')
-                changes_mine, changes_theirs, tchanges, sync_fname = initial_sync(dbw, prefix, from_remote, to_remote)
-                missing, fchanges, dfchanges = get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_remote, to_remote, move_on_change=True)
-                logger.debug("Missing files %s.", missing)
-                rmessages, rfiles = sync_files(dbw, prefix, missing, from_remote, to_remote)
-                record_sync(sync_fname, dbw.revision())
+        def _open_fifos():
+            fifos["from"] = open(stdout_pipe, 'rb')
+            fifos["err"] = open(stderr_pipe, 'rb')
+            fifos["to"] = open(stdin_pipe, 'wb')
 
-            dchanges = 0
-            if args.delete:
-                dchanges = sync_deletes_local(prefix, from_remote, to_remote, args.delete_no_check)
-            if args.mbsync:
-                sync_mbsync_local(prefix, from_remote, to_remote)
+        thread = threading.Thread(target=_open_fifos)
+        thread.start()
 
-            logger.info("Getting change numbers from remote...")
-            remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
-            transfer["read"] += 6 * 4
-        finally:
-            ready, _, exc = select([err_remote], [], [], 0)
-            if ready and not exc:
-                data = err_remote.read()
-                # getting zero data on EOF
-                if len(data) > 0:
-                    print(f"Remote error: {data}", file=sys.stderr)
+        with subprocess.Popen(
+                    cmd,
+                    stdout=open(stdout_pipe, 'wb'),
+                    stderr=open(stderr_pipe, 'wb'),
+                    stdin=open(stdin_pipe, 'rb')
+                ) as proc:
+            thread.join()
 
-        to_remote.close()
-        from_remote.close()
-        err_remote.close()
+            data = b''
+            try:
+                with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                    prefix = os.path.join(str(dbw.default_path()), '')
+                    changes_mine, changes_theirs, tchanges, sync_fname = initial_sync(dbw, prefix, fifos["from"], fifos["to"])
+                    missing, fchanges, dfchanges = get_missing_files(dbw, prefix, changes_mine, changes_theirs, fifos["from"], fifos["to"], move_on_change=True)
+                    logger.debug("Missing files %s.", missing)
+                    rmessages, rfiles = sync_files(dbw, prefix, missing, fifos["from"], fifos["to"])
+                    record_sync(sync_fname, dbw.revision())
+
+                dchanges = 0
+                if args.delete:
+                    dchanges = sync_deletes_local(prefix, fifos["from"], fifos["to"], args.delete_no_check)
+                if args.mbsync:
+                    sync_mbsync_local(prefix, fifos["from"], fifos["to"])
+
+                logger.info("Getting change numbers from remote...")
+                remote_changes = struct.unpack("!IIIIII", fifos["from"].read(6 * 4))
+                transfer["read"] += 6 * 4
+            finally:
+                ready, _, exc = select([fifos["err"]], [], [], 0)
+                if ready and not exc:
+                    data = fifos["err"].read()
+                    # getting zero data on EOF
+                    if len(data) > 0:
+                        print(f"Remote error: {data}", file=sys.stderr)
+
+                fifos["to"].close()
+                fifos["from"].close()
+                fifos["err"].close()
 
     logger.warning("local:  %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
     logger.warning("remote: %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
