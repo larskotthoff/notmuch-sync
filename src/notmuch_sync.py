@@ -4,6 +4,7 @@
 local and remote systems."""
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import logging
@@ -13,7 +14,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import threading
 
 from pathlib import Path
 from select import select
@@ -206,12 +206,14 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         transfer["write"] += 36
         to_stream.flush()
 
-    thread = threading.Thread(target=_send_uuid)
-    thread.start()
-    logger.info("Receiving UUID...")
-    uuids["theirs"] = from_stream.read(36).decode("utf-8")
-    transfer["read"] += 36
-    thread.join()
+    def _recv_uuid():
+        logger.info("Receiving UUID...")
+        uuids["theirs"] = from_stream.read(36).decode("utf-8")
+        transfer["read"] += 36
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_uuid).result()
+        executor.submit(_recv_uuid).result()
 
     logger.info("UUIDs synced.")
     logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
@@ -225,11 +227,13 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         logger.info("Sending local changes...")
         write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
-    thread = threading.Thread(target=_send_changes)
-    thread.start()
-    logger.info("Receiving remote changes...")
-    changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-    thread.join()
+    def _recv_changes():
+        logger.info("Receiving remote changes...")
+        changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_changes).result()
+        executor.submit(_recv_changes).result()
 
     logger.info("Changes synced.")
     logger.debug("Local changes %s, remote changes %s.", changes["mine"], changes["theirs"])
@@ -286,12 +290,14 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         logger.debug("Requesting hashes %s", hashes["req_mine"])
         write(json.dumps(hashes["req_mine"]).encode("utf-8"), to_stream)
 
-    thread = threading.Thread(target=_send_hashes_req)
-    thread.start()
-    logger.info("Receiving requested hashes from remote...")
-    hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
-    logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
-    thread.join()
+    def _recv_hashes_req():
+        logger.info("Receiving requested hashes from remote...")
+        hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
+        logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_hashes_req).result()
+        executor.submit(_recv_hashes_req).result()
 
     def _send_hashes():
         logger.info("Hashing %s requested files and sending to remote...",
@@ -299,12 +305,14 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         write(json.dumps(tmp).encode("utf-8"), to_stream)
 
-    thread = threading.Thread(target=_send_hashes)
-    thread.start()
-    logger.info("Receiving hashes from remote...")
-    tmp = json.loads(read(from_stream).decode("utf-8"))
-    hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
-    thread.join()
+    def _recv_hashes():
+        logger.info("Receiving hashes from remote...")
+        tmp = json.loads(read(from_stream).decode("utf-8"))
+        hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_hashes).result()
+        executor.submit(_recv_hashes).result()
 
     # now actually determine changes and move/copy
     for mid in changes_theirs:
@@ -424,11 +432,14 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
         logger.info("Sending file names missing on local...")
         write(json.dumps([f["name"] for f in files["mine"]]).encode("utf-8"), to_stream)
 
-    thread = threading.Thread(target=_send_fnames)
-    thread.start()
-    logger.info("Receiving file names missing on remote...")
-    files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-    thread.join()
+    def _recv_fnames():
+        logger.info("Receiving file names missing on remote...")
+        files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_fnames).result()
+        executor.submit(_recv_fnames).result()
+
     logger.info("Missing file names synced.")
 
     def _send_files():
@@ -437,27 +448,30 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
                         fname)
             send_file(os.path.join(prefix, fname), to_stream)
 
-    thread = threading.Thread(target=_send_files)
-    thread.start()
-    for idx, f in enumerate(files["mine"]):
-        logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
-        dst = os.path.join(prefix, f["name"])
-        recv_file(dst, from_stream)
+    def _recv_files():
+        for idx, f in enumerate(files["mine"]):
+            logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
+            dst = os.path.join(prefix, f["name"])
+            recv_file(dst, from_stream)
 
-    for idx, f in enumerate(files["mine"]):
-        dst = os.path.join(prefix, f["name"])
-        logger.info("Adding %s to DB.", dst)
-        msg, dup = dbw.add(dst)
-        if not dup:
-            changes["messages"] += 1
-            with msg.frozen():
-                logger.info("Setting tags %s for received %s.",
-                            sorted(missing[f["id"]]["tags"]),
-                            msg.messageid)
-                msg.tags.clear()
-                for tag in missing[f["id"]]["tags"]:
-                    msg.tags.add(tag)
-    thread.join()
+        for idx, f in enumerate(files["mine"]):
+            dst = os.path.join(prefix, f["name"])
+            logger.info("Adding %s to DB.", dst)
+            msg, dup = dbw.add(dst)
+            if not dup:
+                changes["messages"] += 1
+                with msg.frozen():
+                    logger.info("Setting tags %s for received %s.",
+                                sorted(missing[f["id"]]["tags"]),
+                                msg.messageid)
+                    msg.tags.clear()
+                    for tag in missing[f["id"]]["tags"]:
+                        msg.tags.add(tag)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_files).result()
+        executor.submit(_recv_files).result()
+
     logger.info("Missing files synced.")
 
     return (changes["messages"], changes["files"])
@@ -520,11 +534,14 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     def _get_ids():
         ids["mine"] = get_ids(prefix)
 
-    thread = threading.Thread(target=_get_ids)
-    thread.start()
-    logger.info("Receiving all message IDs from remote...")
-    ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-    thread.join()
+    def _recv_ids():
+        logger.info("Receiving all message IDs from remote...")
+        ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_get_ids).result()
+        executor.submit(_recv_ids).result()
+
     logger.info("Message IDs synced.")
 
     def _send_del_ids():
@@ -533,37 +550,39 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
         logger.info("Sending message IDs to be deleted to remote...")
         write(json.dumps(to_del_remote).encode("utf-8"), to_stream)
 
-    thread = threading.Thread(target=_send_del_ids)
-    thread.start()
-    to_del = set(ids["mine"]) - set(ids["theirs"])
-    logger.debug("Local IDs to be deleted %s.", to_del)
-    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-        for mid in to_del:
-            try:
-                msg = dbw.find(mid)
-                if msg.ghost:
-                    continue
-                if "deleted" in msg.tags or no_check:
-                    dels["a"] += 1
-                    logger.info("Removing %s from DB and deleting files.", mid)
-                    for f in msg.filenames():
-                        logger.debug("Removing %s.", f)
-                        dbw.remove(f)
-                        Path(f).unlink()
-                else:
-                    # not there on remote, but no "deleted" tag -- assume
-                    # that something went wrong and set tags again to make
-                    # it show up in next changeset to be synced back to
-                    # remote
-                    logger.info("%s set to be removed, but not tagged 'deleted'!", mid)
-                    with msg.frozen():
-                        tmp = "".join(msg.tags)
-                        msg.tags.add(tmp)
-                        msg.tags.discard(tmp)
-            except LookupError:
-                # already deleted? doesn't matter
-                pass
-    thread.join()
+    def _recv_del_ids():
+        to_del = set(ids["mine"]) - set(ids["theirs"])
+        logger.debug("Local IDs to be deleted %s.", to_del)
+        with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+            for mid in to_del:
+                try:
+                    msg = dbw.find(mid)
+                    if msg.ghost:
+                        continue
+                    if "deleted" in msg.tags or no_check:
+                        dels["a"] += 1
+                        logger.info("Removing %s from DB and deleting files.", mid)
+                        for f in msg.filenames():
+                            logger.debug("Removing %s.", f)
+                            dbw.remove(f)
+                            Path(f).unlink()
+                    else:
+                        # not there on remote, but no "deleted" tag -- assume
+                        # that something went wrong and set tags again to make
+                        # it show up in next changeset to be synced back to
+                        # remote
+                        logger.info("%s set to be removed, but not tagged 'deleted'!", mid)
+                        with msg.frozen():
+                            tmp = "".join(msg.tags)
+                            msg.tags.add(tmp)
+                            msg.tags.discard(tmp)
+                except LookupError:
+                    # already deleted? doesn't matter
+                    pass
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_del_ids).result()
+        executor.submit(_recv_del_ids).result()
 
     return dels["a"]
 
@@ -629,11 +648,14 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
                            for pat in [".uidvalidity", ".mbsyncstate"]
                            for f in Path(prefix).rglob(pat) }
 
-    thread = threading.Thread(target=_get_mbsync)
-    thread.start()
-    logger.info("Receiving mbsync file stats from remote...")
-    mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-    thread.join()
+    def _recv_mbsync():
+        logger.info("Receiving mbsync file stats from remote...")
+        mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_get_mbsync).result()
+        executor.submit(_recv_mbsync).result()
+
     logger.info("mbsync file stats synced.")
 
     pull = [ f for f in mbsync["mine"].keys()
@@ -659,18 +681,21 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(os.path.join(prefix, f), to_stream)
 
-    thread = threading.Thread(target=_send_mbsync_files)
-    thread.start()
-    for idx, f in enumerate(pull):
-        logger.debug("%s/%s Receiving mbsync file %s from remote...",
-                     idx + 1, len(pull), f)
-        mtime_data = from_stream.read(8)
-        transfer["read"] += 8
-        mtime = struct.unpack("!d", mtime_data)[0]
-        fname = os.path.join(prefix, f)
-        recv_file(fname, from_stream, overwrite_raise=False)
-        os.utime(fname, (mtime, mtime))
-    thread.join()
+    def _recv_mbsync_files():
+        for idx, f in enumerate(pull):
+            logger.debug("%s/%s Receiving mbsync file %s from remote...",
+                         idx + 1, len(pull), f)
+            mtime_data = from_stream.read(8)
+            transfer["read"] += 8
+            mtime = struct.unpack("!d", mtime_data)[0]
+            fname = os.path.join(prefix, f)
+            recv_file(fname, from_stream, overwrite_raise=False)
+            os.utime(fname, (mtime, mtime))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_mbsync_files).result()
+        executor.submit(_recv_mbsync_files).result()
+
     logger.info("mbsync files synced.")
 
 
@@ -697,17 +722,19 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(fname, to_stream)
 
-    thread = threading.Thread(target=_send_mbsync_files)
-    thread.start()
-    pull = json.loads(read(from_stream).decode("utf-8"))
-    for f in pull:
-        mtime_data = from_stream.read(8)
-        transfer["read"] += 8
-        mtime = struct.unpack("!d", mtime_data)[0]
-        fname = os.path.join(prefix, f)
-        recv_file(fname, from_stream, overwrite_raise=False)
-        os.utime(fname, (mtime, mtime))
-    thread.join()
+    def _recv_mbsync_files():
+        pull = json.loads(read(from_stream).decode("utf-8"))
+        for f in pull:
+            mtime_data = from_stream.read(8)
+            transfer["read"] += 8
+            mtime = struct.unpack("!d", mtime_data)[0]
+            fname = os.path.join(prefix, f)
+            recv_file(fname, from_stream, overwrite_raise=False)
+            os.utime(fname, (mtime, mtime))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        executor.submit(_send_mbsync_files).result()
+        executor.submit(_recv_mbsync_files).result()
 
 
 def sync_remote(args):
