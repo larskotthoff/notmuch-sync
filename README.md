@@ -9,7 +9,7 @@ mbsync-compatible syncing of notmuch databases and mail files.
 
 [PyPI page](https://pypi.org/project/notmuch-sync/)
 
-## Quickstart
+## Installation and Quickstart
 
 Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
 Install with e.g. `pip install notmuch-sync`. No configuration is necessary;
@@ -27,10 +27,42 @@ user`. This assumes that you can connect to `my.mail.server` using SSH with user
 machine. See `notmuch-sync --help` for commandline flags. Notmuch databases need
 to be set up on both sides; notmuch-sync does not run `notmuch new`.
 
+In a nutshell, here are the steps you would take if you have notmuch set up on
+one machine and wish to sync it with another:
+1. Copy your notmuch configuration to the new machine (this may be just `.notmuch-config`).
+2. Adjust the configuration as necessary, in particular any paths.
+3. Run `notmuch new` on the new machine (no need to copy any mail files).
+4. Run `notmuch-sync --verbose --delete --remote other.machine`. Add `--mbsync`
+   if you're using mbsync.
+
 If you're starting with an empty notmuch database on one side, the first sync
 might take a long time. The second sync will, too, as it essentially verifies
 everything that was done during the first sync. Subsequent syncs should be much
 faster, unless there are a lot of changes.
+
+
+## Commandline Flags
+
+````
+usage: notmuch-sync [-h] [-r REMOTE] [-u USER] [-v] [-q] [-s SSH_CMD] [-m] [-p PATH] [-c REMOTE_CMD] [-d] [-x]
+
+options:
+  -h, --help            show this help message and exit
+  -r, --remote REMOTE   remote host to connect to
+  -u, --user USER       SSH user to use
+  -v, --verbose         increases verbosity, up to twice (ignored on remote)
+  -q, --quiet           do not print any output, overrides --verbose
+  -s, --ssh-cmd SSH_CMD
+                        SSH command to use (default ssh -CTaxq)
+  -m, --mbsync          sync mbsync files (.mbsyncstate, .uidvalidity)
+  -p, --path PATH       path to notmuch-sync on remote server
+  -c, --remote-cmd REMOTE_CMD
+                        command to run to sync; overrides --remote, --user, --ssh-cmd, --path; mostly used for testing
+  -d, --delete          sync deleted messages (requires listing all messages in notmuch database, potentially expensive)
+  -x, --delete-no-check
+                        delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe
+````
+
 
 ## Main Features
 
