@@ -81,10 +81,10 @@ def test_changes_changed_uuid():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 abc")
         f.flush()
-        with pytest.raises(SystemExit) as pwe:
+        with pytest.raises(ValueError) as pwe:
             ns.get_changes(db, rev, prefix, f.name)
-        assert pwe.type == SystemExit
-        assert pwe.value.code == "Last sync with UUID abc, but notmuch DB has UUID 00000000-0000-0000-0000-000000000000, aborting..."
+        assert pwe.type == ValueError
+        assert str(pwe.value) == "Last sync with UUID abc, but notmuch DB has UUID 00000000-0000-0000-0000-000000000000, aborting..."
 
 
 def test_changes_later_rev():
@@ -96,10 +96,10 @@ def test_changes_later_rev():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123 00000000-0000-0000-0000-000000000000")
         f.flush()
-        with pytest.raises(SystemExit) as pwe:
+        with pytest.raises(ValueError) as pwe:
             ns.get_changes(db, rev, prefix, f.name)
-        assert pwe.type == SystemExit
-        assert pwe.value.code == "Last sync revision 123 larger than current DB revision 122, aborting..."
+        assert pwe.type == ValueError
+        assert str(pwe.value) == "Last sync revision 123 larger than current DB revision 122, aborting..."
 
 
 def test_changes_corrupted_file():
@@ -111,10 +111,10 @@ def test_changes_corrupted_file():
     with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f:
         f.write("123abc")
         f.flush()
-        with pytest.raises(SystemExit) as pwe:
+        with pytest.raises(ValueError) as pwe:
             ns.get_changes(db, rev, prefix, f.name)
-        assert pwe.type == SystemExit
-        assert pwe.value.code == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
+        assert pwe.type == ValueError
+        assert str(pwe.value) == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
 
 
 def test_initial_sync():
@@ -687,10 +687,10 @@ def test_missing_files_delete_mismatch():
                 changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name]}}
                 with pytest.raises(ValueError) as pwe:
                     ns.get_missing_files(db, prefix, {}, changes_theirs, istream, ostream)
-                tmp = json.dumps([f2name])
-                assert struct.pack("!I", len(tmp)) + tmp.encode("utf-8") + b"\x00\x00\x00\x02[]" == ostream.getvalue()
                 assert pwe.type == ValueError
                 assert str(pwe.value) == f"Message 'foo' has ['{f2name}'] on remote and different ['{f1.name.removeprefix(prefix)}'] locally!"
+                tmp = json.dumps([f2name])
+                assert struct.pack("!I", len(tmp)) + tmp.encode("utf-8") + b"\x00\x00\x00\x02[]" == ostream.getvalue()
 
                 assert db.add.call_count == 0
                 assert pu.call_count == 0

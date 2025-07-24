@@ -64,7 +64,7 @@ def write(data, stream):
     transfer["write"] += 4
     written = stream.write(data)
     if written < len(data):
-        sys.exit(f"Tried to write {len(data)} bytes, but wrote only {written}, aborting...")
+        raise ValueError(f"Tried to write {len(data)} bytes, but wrote only {written}, aborting...")
     transfer["write"] += len(data)
     stream.flush()
 
@@ -82,11 +82,11 @@ def read(stream):
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
-    read = stream.read(size)
-    if len(read) < size:
-        sys.exit(f"Tried to read {size} bytes, but read only {len(read)}, aborting...")
+    data = stream.read(size)
+    if len(data) < size:
+        raise ValueError(f"Tried to read {size} bytes, but read only {len(data)}, aborting...")
     transfer["read"] += size
-    return read
+    return data
 
 
 def get_changes(db, revision, prefix, sync_file):
@@ -109,12 +109,12 @@ def get_changes(db, revision, prefix, sync_file):
             uuid = revision.uuid.decode()
             try:
                 if tmp[1] != uuid:
-                    sys.exit(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
+                    raise ValueError(f"Last sync with UUID {tmp[1]}, but notmuch DB has UUID {uuid}, aborting...")
                 rev_prev = int(tmp[0])
                 if rev_prev > revision.rev:
-                    sys.exit(f"Last sync revision {rev_prev} larger than current DB revision {revision.rev}, aborting...")
-            except Exception:
-                sys.exit(f"Sync state file '{sync_file}' corrupted, delete to sync from scratch.")
+                    raise ValueError(f"Last sync revision {rev_prev} larger than current DB revision {revision.rev}, aborting...")
+            except (AttributeError, IndexError, UnicodeError) as e:
+                raise ValueError(f"Sync state file '{sync_file}' corrupted, delete to sync from scratch.") from e
     except FileNotFoundError:
         # no previous sync or sync file broken, leave rev_prev at -1 as this will sync entire DB
         pass
