@@ -794,12 +794,10 @@ def sync_local(args):
         thread = threading.Thread(target=_open_fifos)
         thread.start()
 
-        with subprocess.Popen(
-                    cmd,
-                    stdout=open(stdout_pipe, 'wb'),
-                    stderr=open(stderr_pipe, 'wb'),
-                    stdin=open(stdin_pipe, 'rb')
-                ) as proc:
+        with subprocess.Popen(cmd,
+                stdout=open(stdout_pipe, 'wb'),
+                stderr=open(stderr_pipe, 'wb'),
+                stdin=open(stdin_pipe, 'rb')):
             thread.join()
 
             data = b''
