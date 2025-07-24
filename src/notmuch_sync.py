@@ -89,6 +89,21 @@ def read(stream):
     return data
 
 
+def run_concurrently(m1, m2):
+    """
+    Run two functions concurrently. Used to read/write to streams at the same
+    time.
+
+    Args:
+        m1: One function.
+        m2: Other function.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(m1)
+        f2 = executor.submit(m2)
+        concurrent.futures.wait([f1, f2])
+
+
 def get_changes(db, revision, prefix, sync_file):
     """
     Get changes that happened since the last sync, or everything in the DB if no previous sync.
@@ -211,9 +226,7 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         uuids["theirs"] = from_stream.read(36).decode("utf-8")
         transfer["read"] += 36
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_uuid).result()
-        executor.submit(_recv_uuid).result()
+    run_concurrently(_send_uuid, _recv_uuid)
 
     logger.info("UUIDs synced.")
     logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
@@ -231,9 +244,7 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
         logger.info("Receiving remote changes...")
         changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_changes).result()
-        executor.submit(_recv_changes).result()
+    run_concurrently(_send_changes, _recv_changes)
 
     logger.info("Changes synced.")
     logger.debug("Local changes %s, remote changes %s.", changes["mine"], changes["theirs"])
@@ -295,9 +306,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
         logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_hashes_req).result()
-        executor.submit(_recv_hashes_req).result()
+    run_concurrently(_send_hashes_req, _recv_hashes_req)
 
     def _send_hashes():
         logger.info("Hashing %s requested files and sending to remote...",
@@ -310,9 +319,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         tmp = json.loads(read(from_stream).decode("utf-8"))
         hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_hashes).result()
-        executor.submit(_recv_hashes).result()
+    run_concurrently(_send_hashes, _recv_hashes)
 
     # now actually determine changes and move/copy
     for mid in changes_theirs:
@@ -436,9 +443,7 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
         logger.info("Receiving file names missing on remote...")
         files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_fnames).result()
-        executor.submit(_recv_fnames).result()
+    run_concurrently(_send_fnames, _recv_fnames)
 
     logger.info("Missing file names synced.")
 
@@ -468,9 +473,7 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
                     for tag in missing[f["id"]]["tags"]:
                         msg.tags.add(tag)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_files).result()
-        executor.submit(_recv_files).result()
+    run_concurrently(_send_files, _recv_files)
 
     logger.info("Missing files synced.")
 
@@ -538,9 +541,7 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
         logger.info("Receiving all message IDs from remote...")
         ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_get_ids).result()
-        executor.submit(_recv_ids).result()
+    run_concurrently(_get_ids, _recv_ids)
 
     logger.info("Message IDs synced.")
 
@@ -580,9 +581,7 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
                     # already deleted? doesn't matter
                     pass
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_del_ids).result()
-        executor.submit(_recv_del_ids).result()
+    run_concurrently(_send_del_ids, _recv_del_ids)
 
     return dels["a"]
 
@@ -652,9 +651,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
         logger.info("Receiving mbsync file stats from remote...")
         mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_get_mbsync).result()
-        executor.submit(_recv_mbsync).result()
+    run_concurrently(_get_mbsync, _recv_mbsync)
 
     logger.info("mbsync file stats synced.")
 
@@ -692,9 +689,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             recv_file(fname, from_stream, overwrite_raise=False)
             os.utime(fname, (mtime, mtime))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_mbsync_files).result()
-        executor.submit(_recv_mbsync_files).result()
+    run_concurrently(_send_mbsync_files, _recv_mbsync_files)
 
     logger.info("mbsync files synced.")
 
@@ -732,9 +727,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
             recv_file(fname, from_stream, overwrite_raise=False)
             os.utime(fname, (mtime, mtime))
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        executor.submit(_send_mbsync_files).result()
-        executor.submit(_recv_mbsync_files).result()
+    run_concurrently(_send_mbsync_files, _recv_mbsync_files)
 
 
 def sync_remote(args):
