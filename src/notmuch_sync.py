@@ -836,7 +836,7 @@ def main():
     parser.add_argument("-u", "--user", type=str, help="SSH user to use")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="increases verbosity, up to twice (ignored on remote)")
     parser.add_argument("-q", "--quiet", action="store_true", help="do not print any output, overrides --verbose")
-    parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use (default ssh -CTaxq)")
+    parser.add_argument("-s", "--ssh-cmd", type=str, default="ssh -CTaxq", help="SSH command to use (default 'ssh -CTaxq')")
     parser.add_argument("-m", "--mbsync", action="store_true", help="sync mbsync files (.mbsyncstate, .uidvalidity)")
     parser.add_argument("-p", "--path", type=str, default=os.path.basename(sys.argv[0]), help="path to notmuch-sync on remote server")
     parser.add_argument("-c", "--remote-cmd", type=str, help="command to run to sync; overrides --remote, --user, --ssh-cmd, --path; mostly used for testing")

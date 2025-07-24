@@ -53,7 +53,7 @@ options:
   -v, --verbose         increases verbosity, up to twice (ignored on remote)
   -q, --quiet           do not print any output, overrides --verbose
   -s, --ssh-cmd SSH_CMD
-                        SSH command to use (default ssh -CTaxq)
+                        SSH command to use (default 'ssh -CTaxq')
   -m, --mbsync          sync mbsync files (.mbsyncstate, .uidvalidity)
   -p, --path PATH       path to notmuch-sync on remote server
   -c, --remote-cmd REMOTE_CMD
