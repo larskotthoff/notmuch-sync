@@ -4,7 +4,6 @@
 local and remote systems."""
 
 import argparse
-import asyncio
 import hashlib
 import json
 import logging
@@ -14,6 +13,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
 
 from pathlib import Path
 from select import select
@@ -197,26 +197,22 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
                 name of sync file)
     """
     revision = dbw.revision()
-    # using a hash here b/c of Python's scoping rules -- need to set this in
-    # the async function
     uuids = {}
     uuids["mine"] = revision.uuid.decode()
 
-    async def _send_uuid():
+    def _send_uuid():
         logger.info("Sending UUID %s...", uuids["mine"])
         to_stream.write(uuids["mine"].encode("utf-8"))
         transfer["write"] += 36
         to_stream.flush()
 
-    async def _recv_uuid():
-        logger.info("Receiving UUID...")
-        uuids["theirs"] = from_stream.read(36).decode("utf-8")
-        transfer["read"] += 36
+    thread = threading.Thread(target=_send_uuid)
+    thread.start()
+    logger.info("Receiving UUID...")
+    uuids["theirs"] = from_stream.read(36).decode("utf-8")
+    transfer["read"] += 36
+    thread.join()
 
-    async def _sync_uuids():
-        await asyncio.gather(_send_uuid(), _recv_uuid())
-
-    asyncio.run(_sync_uuids())
     logger.info("UUIDs synced.")
     logger.debug("Local UUID %s, remote UUID %s.", uuids["mine"], uuids["theirs"])
     fname = os.path.join(prefix, ".notmuch", "notmuch-sync-" + uuids["theirs"])
@@ -225,18 +221,16 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     logger.info("Computing local changes...")
     changes["mine"] = get_changes(dbw, revision, prefix, fname)
 
-    async def _send_changes():
+    def _send_changes():
         logger.info("Sending local changes...")
         write(json.dumps(changes["mine"]).encode("utf-8"), to_stream)
 
-    async def _recv_changes():
-        logger.info("Receiving remote changes...")
-        changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    thread = threading.Thread(target=_send_changes)
+    thread.start()
+    logger.info("Receiving remote changes...")
+    changes["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    thread.join()
 
-    async def _sync_changes():
-        await asyncio.gather(_send_changes(), _recv_changes())
-
-    asyncio.run(_sync_changes())
     logger.info("Changes synced.")
     logger.debug("Local changes %s, remote changes %s.", changes["mine"], changes["theirs"])
     tchanges = sync_tags(dbw, changes["mine"], changes["theirs"])
@@ -287,36 +281,30 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
         except LookupError:
             continue
 
-    async def _send_hashes_req():
+    def _send_hashes_req():
         logger.info("Requesting %s hashes from remote...", len(hashes["req_mine"]))
         logger.debug("Requesting hashes %s", hashes["req_mine"])
         write(json.dumps(hashes["req_mine"]).encode("utf-8"), to_stream)
 
-    async def _recv_hashes_req():
-        logger.info("Receiving requested hashes from remote...")
-        hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
-        logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
+    thread = threading.Thread(target=_send_hashes_req)
+    thread.start()
+    logger.info("Receiving requested hashes from remote...")
+    hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
+    thread.join()
 
-    async def _sync_reqs():
-        await asyncio.gather(_send_hashes_req(), _recv_hashes_req())
-
-    asyncio.run(_sync_reqs())
-
-    async def _send_hashes():
+    def _send_hashes():
         logger.info("Hashing %s requested files and sending to remote...",
                     len(hashes["req_theirs"]))
         tmp = [digest(Path(os.path.join(prefix, f)).read_bytes()) for f in hashes["req_theirs"]]
         write(json.dumps(tmp).encode("utf-8"), to_stream)
 
-    async def _receive_hashes():
-        logger.info("Receiving hashes from remote...")
-        tmp = json.loads(read(from_stream).decode("utf-8"))
-        hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
-
-    async def _sync_hashes():
-        await asyncio.gather(_send_hashes(), _receive_hashes())
-
-    asyncio.run(_sync_hashes())
+    thread = threading.Thread(target=_send_hashes)
+    thread.start()
+    logger.info("Receiving hashes from remote...")
+    tmp = json.loads(read(from_stream).decode("utf-8"))
+    hashes["theirs"] = dict(zip(hashes["req_mine"], tmp))
+    thread.join()
 
     # now actually determine changes and move/copy
     for mid in changes_theirs:
@@ -432,50 +420,44 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
     files["mine"] = [ {"name": f, "id": mid} for mid in missing for f in missing[mid]["files"] ]
     changes = {"files": len(files["mine"]), "messages": 0}
 
-    async def _send_fnames():
+    def _send_fnames():
         logger.info("Sending file names missing on local...")
         write(json.dumps([f["name"] for f in files["mine"]]).encode("utf-8"), to_stream)
 
-    async def _recv_fnames():
-        logger.info("Receiving file names missing on remote...")
-        files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-
-    async def _sync_fnames():
-        await asyncio.gather(_send_fnames(), _recv_fnames())
-
-    asyncio.run(_sync_fnames())
+    thread = threading.Thread(target=_send_fnames)
+    thread.start()
+    logger.info("Receiving file names missing on remote...")
+    files["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    thread.join()
     logger.info("Missing file names synced.")
 
-    async def _send_files():
+    def _send_files():
         for idx, fname in enumerate(files["theirs"]):
             logger.info("%s/%s Sending %s...", idx + 1, len(files["theirs"]),
                         fname)
             send_file(os.path.join(prefix, fname), to_stream)
 
-    async def _recv_files():
-        for idx, f in enumerate(files["mine"]):
-            logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
-            dst = os.path.join(prefix, f["name"])
-            recv_file(dst, from_stream)
+    thread = threading.Thread(target=_send_files)
+    thread.start()
+    for idx, f in enumerate(files["mine"]):
+        logger.info("%s/%s Receiving %s...", idx + 1, len(files["mine"]), f["name"])
+        dst = os.path.join(prefix, f["name"])
+        recv_file(dst, from_stream)
 
-        for idx, f in enumerate(files["mine"]):
-            dst = os.path.join(prefix, f["name"])
-            logger.info("Adding %s to DB.", dst)
-            msg, dup = dbw.add(dst)
-            if not dup:
-                changes["messages"] += 1
-                with msg.frozen():
-                    logger.info("Setting tags %s for received %s.",
-                                sorted(missing[f["id"]]["tags"]),
-                                msg.messageid)
-                    msg.tags.clear()
-                    for tag in missing[f["id"]]["tags"]:
-                        msg.tags.add(tag)
-
-    async def _sync_files():
-        await asyncio.gather(_send_files(), _recv_files())
-
-    asyncio.run(_sync_files())
+    for idx, f in enumerate(files["mine"]):
+        dst = os.path.join(prefix, f["name"])
+        logger.info("Adding %s to DB.", dst)
+        msg, dup = dbw.add(dst)
+        if not dup:
+            changes["messages"] += 1
+            with msg.frozen():
+                logger.info("Setting tags %s for received %s.",
+                            sorted(missing[f["id"]]["tags"]),
+                            msg.messageid)
+                msg.tags.clear()
+                for tag in missing[f["id"]]["tags"]:
+                    msg.tags.add(tag)
+    thread.join()
     logger.info("Missing files synced.")
 
     return (changes["messages"], changes["files"])
@@ -535,59 +517,54 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     ids = {}
     dels = {'a': 0}
 
-    async def _get_ids():
+    def _get_ids():
         ids["mine"] = get_ids(prefix)
 
-    async def _recv_ids():
-        logger.info("Receiving all message IDs from remote...")
-        ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-
-    async def _sync_ids():
-        await asyncio.gather(_get_ids(), _recv_ids())
-
-    asyncio.run(_sync_ids())
+    thread = threading.Thread(target=_get_ids)
+    thread.start()
+    logger.info("Receiving all message IDs from remote...")
+    ids["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    thread.join()
     logger.info("Message IDs synced.")
 
-    async def _send_del_ids():
+    def _send_del_ids():
         to_del_remote = list(set(ids["theirs"]) - set(ids["mine"]))
         logger.debug("Remote IDs to be deleted %s.", to_del_remote)
         logger.info("Sending message IDs to be deleted to remote...")
         write(json.dumps(to_del_remote).encode("utf-8"), to_stream)
 
-    async def _del_ids():
-        to_del = set(ids["mine"]) - set(ids["theirs"])
-        logger.debug("Local IDs to be deleted %s.", to_del)
-        with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-            for mid in to_del:
-                try:
-                    msg = dbw.find(mid)
-                    if msg.ghost:
-                        continue
-                    if "deleted" in msg.tags or no_check:
-                        dels["a"] += 1
-                        logger.info("Removing %s from DB and deleting files.", mid)
-                        for f in msg.filenames():
-                            logger.debug("Removing %s.", f)
-                            dbw.remove(f)
-                            Path(f).unlink()
-                    else:
-                        # not there on remote, but no "deleted" tag -- assume
-                        # that something went wrong and set tags again to make
-                        # it show up in next changeset to be synced back to
-                        # remote
-                        logger.info("%s set to be removed, but not tagged 'deleted'!", mid)
-                        with msg.frozen():
-                            tmp = "".join(msg.tags)
-                            msg.tags.add(tmp)
-                            msg.tags.discard(tmp)
-                except LookupError:
-                    # already deleted? doesn't matter
-                    pass
+    thread = threading.Thread(target=_send_del_ids)
+    thread.start()
+    to_del = set(ids["mine"]) - set(ids["theirs"])
+    logger.debug("Local IDs to be deleted %s.", to_del)
+    with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+        for mid in to_del:
+            try:
+                msg = dbw.find(mid)
+                if msg.ghost:
+                    continue
+                if "deleted" in msg.tags or no_check:
+                    dels["a"] += 1
+                    logger.info("Removing %s from DB and deleting files.", mid)
+                    for f in msg.filenames():
+                        logger.debug("Removing %s.", f)
+                        dbw.remove(f)
+                        Path(f).unlink()
+                else:
+                    # not there on remote, but no "deleted" tag -- assume
+                    # that something went wrong and set tags again to make
+                    # it show up in next changeset to be synced back to
+                    # remote
+                    logger.info("%s set to be removed, but not tagged 'deleted'!", mid)
+                    with msg.frozen():
+                        tmp = "".join(msg.tags)
+                        msg.tags.add(tmp)
+                        msg.tags.discard(tmp)
+            except LookupError:
+                # already deleted? doesn't matter
+                pass
+    thread.join()
 
-    async def _sync_dels():
-        await asyncio.gather(_send_del_ids(), _del_ids())
-
-    asyncio.run(_sync_dels())
     return dels["a"]
 
 
@@ -646,20 +623,17 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     """
     mbsync = {}
 
-    async def _get_mbsync():
+    def _get_mbsync():
         logger.info("Getting local mbsync file stats...")
         mbsync["mine"] = { str(f).removeprefix(prefix): f.stat().st_mtime
                            for pat in [".uidvalidity", ".mbsyncstate"]
                            for f in Path(prefix).rglob(pat) }
 
-    async def _recv_mbsync():
-        logger.info("Receiving mbsync file stats from remote...")
-        mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
-
-    async def _sync_mbsync():
-        await asyncio.gather(_get_mbsync(), _recv_mbsync())
-
-    asyncio.run(_sync_mbsync())
+    thread = threading.Thread(target=_get_mbsync)
+    thread.start()
+    logger.info("Receiving mbsync file stats from remote...")
+    mbsync["theirs"] = json.loads(read(from_stream).decode("utf-8"))
+    thread.join()
     logger.info("mbsync file stats synced.")
 
     pull = [ f for f in mbsync["mine"].keys()
@@ -669,7 +643,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
     write(json.dumps(pull).encode("utf-8"), to_stream)
 
-    async def _send_mbsync_files():
+    def _send_mbsync_files():
         push = [ f for f in mbsync["theirs"].keys()
                 if (f in mbsync["mine"] and mbsync["mine"][f] > mbsync["theirs"][f]) ]
         push += list(set(mbsync["mine"].keys()) - set(mbsync["theirs"].keys()))
@@ -685,21 +659,18 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(os.path.join(prefix, f), to_stream)
 
-    async def _recv_mbsync_files():
-        for idx, f in enumerate(pull):
-            logger.debug("%s/%s Receiving mbsync file %s from remote...",
-                         idx + 1, len(pull), f)
-            mtime_data = from_stream.read(8)
-            transfer["read"] += 8
-            mtime = struct.unpack("!d", mtime_data)[0]
-            fname = os.path.join(prefix, f)
-            recv_file(fname, from_stream, overwrite_raise=False)
-            os.utime(fname, (mtime, mtime))
-
-    async def _sync_mbsync_files():
-        await asyncio.gather(_send_mbsync_files(), _recv_mbsync_files())
-
-    asyncio.run(_sync_mbsync_files())
+    thread = threading.Thread(target=_send_mbsync_files)
+    thread.start()
+    for idx, f in enumerate(pull):
+        logger.debug("%s/%s Receiving mbsync file %s from remote...",
+                     idx + 1, len(pull), f)
+        mtime_data = from_stream.read(8)
+        transfer["read"] += 8
+        mtime = struct.unpack("!d", mtime_data)[0]
+        fname = os.path.join(prefix, f)
+        recv_file(fname, from_stream, overwrite_raise=False)
+        os.utime(fname, (mtime, mtime))
+    thread.join()
     logger.info("mbsync files synced.")
 
 
@@ -718,7 +689,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
     write(json.dumps(mbsync).encode("utf-8"), to_stream)
     push = json.loads(read(from_stream).decode("utf-8"))
 
-    async def _send_mbsync_files():
+    def _send_mbsync_files():
         for f in push:
             fname = os.path.join(prefix, f)
             to_stream.write(struct.pack("!d", Path(fname).stat().st_mtime))
@@ -726,20 +697,17 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
             transfer["write"] += 8
             send_file(fname, to_stream)
 
-    async def _recv_mbsync_files():
-        pull = json.loads(read(from_stream).decode("utf-8"))
-        for f in pull:
-            mtime_data = from_stream.read(8)
-            transfer["read"] += 8
-            mtime = struct.unpack("!d", mtime_data)[0]
-            fname = os.path.join(prefix, f)
-            recv_file(fname, from_stream, overwrite_raise=False)
-            os.utime(fname, (mtime, mtime))
-
-    async def _sync_mbsync_files():
-        await asyncio.gather(_send_mbsync_files(), _recv_mbsync_files())
-
-    asyncio.run(_sync_mbsync_files())
+    thread = threading.Thread(target=_send_mbsync_files)
+    thread.start()
+    pull = json.loads(read(from_stream).decode("utf-8"))
+    for f in pull:
+        mtime_data = from_stream.read(8)
+        transfer["read"] += 8
+        mtime = struct.unpack("!d", mtime_data)[0]
+        fname = os.path.join(prefix, f)
+        recv_file(fname, from_stream, overwrite_raise=False)
+        os.utime(fname, (mtime, mtime))
+    thread.join()
 
 
 def sync_remote(args):
