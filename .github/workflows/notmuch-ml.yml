@@ -156,7 +156,7 @@ jobs:
     - run: if [ X`sudo -u synctest notmuch search id:1517843248.cvlu0mp4mk.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
     - run: cp $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-* /tmp/
     - run: sudo -u synctest cp /home/synctest/notmuch-list/.notmuch/notmuch-sync-* /tmp/
-    - run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Changes synced.\" { exec kill -9 [exp_pid] }"
+    - run: expect -c "spawn notmuch-sync --delete --verbose --verbose --remote localhost --user synctest; expect \"Tags synced.\" { killall -9 notmuch-sync }"
     - run: diff `ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(ls $GITHUB_WORKSPACE/notmuch-list/.notmuch/notmuch-sync-*)`
     - run: sudo -u synctest diff `sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*` /tmp/`basename $(sudo -u synctest ls /home/synctest/notmuch-list/.notmuch/notmuch-sync-*)`
     - run: if [ X`notmuch search id:1517815399.2w186vjjm2.astroid@strange.none | wc -l` != "X1" ]; then exit 1; fi
