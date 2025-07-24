@@ -228,10 +228,15 @@ notmuch-sync when this happens.
 Running `notmuch compact` changes the UUID of the database. This means that
 subsequent syncs will abort with an error message.
 
-Like muchsync, it uses xapian directly for some operations for efficiency
-reasons. This means in particular that notmuch-sync assumes that value 1 of a
-xapian document is the message ID and the term "Tghost" is used to identify
-ghost messages.
+Like muchsync, notmuch-sync uses xapian directly for some operations for
+efficiency reasons. This means in particular that notmuch-sync assumes that
+value 1 of a xapian document is the message ID and the term "Tghost" is used to
+identify ghost messages.
+
+notmuch-sync assumes that the remote command does not produce any output except
+for the output produced by the remote notmuch-sync. If you're running a wrapper
+script on the remote or have an SSH banner, make sure to silence/redirect all
+respective output.
 
 There are extensive tests, but there is no guarantee that notmuch-sync will
 always do the right thing.
