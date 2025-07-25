@@ -24,7 +24,7 @@ def sync(shell, local_conf, remote_conf, verbose=False, delete=False, mbsync=Fal
     if mbsync:
         args.append("--mbsync")
     res = shell.run(*args, env={"NOTMUCH_CONFIG": local_conf})
-    print(res)
+    #print(res)
     assert res.returncode == 0
     return res.stderr
 
