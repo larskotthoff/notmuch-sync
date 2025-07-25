@@ -658,7 +658,6 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             if (f in mbsync["theirs"] and mbsync["theirs"][f] > mbsync["mine"][f]) ]
     pull += list(set(mbsync["theirs"].keys()) - set(mbsync["mine"].keys()))
     logger.debug("Local mbsync files to be updated from remote %s.", pull)
-    logger.info("Sending list of %s requested mbsync files to remote...", len(pull))
     write(json.dumps(pull).encode("utf-8"), to_stream)
 
     def _send_mbsync_files():
@@ -678,6 +677,7 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
             send_file(os.path.join(prefix, f), to_stream)
 
     def _recv_mbsync_files():
+        logger.info("Receiving %s mbsync files from remote...", len(pull))
         for idx, f in enumerate(pull):
             logger.debug("%s/%s Receiving mbsync file %s from remote...",
                          idx + 1, len(pull), f)
