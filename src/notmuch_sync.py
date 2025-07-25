@@ -25,7 +25,7 @@ logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
-BUFSIZE = 2**16
+BUFSIZE = 2**15
 
 def digest(data):
     """
