@@ -25,7 +25,7 @@ logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
-BUFSIZE = 2**15
+WRITEBUF = 2**16 - 10
 
 def digest(data):
     """
@@ -63,11 +63,12 @@ def write(data, stream):
     """
     stream.write(struct.pack("!I", len(data)))
     transfer["write"] += 4
-    written = stream.write(data)
-    if written < len(data):
-        raise ValueError(f"Tried to write {len(data)} bytes, but wrote only {written}, aborting...")
+    written = 0
+    while written < len(data):
+        to_write = min(WRITEBUF, len(data) - written)
+        written += stream.write(data[written:written + to_write])
+        stream.flush()
     transfer["write"] += len(data)
-    stream.flush()
 
 
 def read(stream):
@@ -83,10 +84,9 @@ def read(stream):
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
-    data = b''
-    while len(data) < size:
-        to_read = min(BUFSIZE, size - len(data))
-        data += stream.read(to_read)
+    data = stream.read(size)
+    if len(data) < size:
+        raise ValueError(f"Tried to read {size} bytes, but read only {len(data)}, aborting...")
     transfer["read"] += size
     return data
 
@@ -778,15 +778,13 @@ def sync_local(args):
     logger.info("Connecting to remote...")
     logger.debug("Command to connect to remote: %s", cmd)
 
-    read_fd, write_fd = os.pipe()
-    stdin_read = os.fdopen(read_fd, 'rb')
-    to_remote = os.fdopen(write_fd, 'wb')
     with subprocess.Popen(
                 cmd,
-                stdin=stdin_read,
+                stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             ) as proc:
+        to_remote = proc.stdin
         from_remote = proc.stdout
         err_remote = proc.stderr
 
