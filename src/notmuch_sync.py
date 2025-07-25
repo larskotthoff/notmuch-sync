@@ -811,7 +811,7 @@ def sync_local(args):
                 data = err_remote.read()
                 # getting zero data on EOF
                 if len(data) > 0:
-                    print(f"Remote error: {data}", file=sys.stderr)
+                    logger.error("Remote error: %s", data)
 
             to_remote.close()
             from_remote.close()
