@@ -25,6 +25,7 @@ logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
+BUFSIZE = 2**16
 
 def digest(data):
     """
@@ -82,9 +83,10 @@ def read(stream):
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
-    data = stream.read(size)
-    if len(data) < size:
-        raise ValueError(f"Tried to read {size} bytes, but read only {len(data)}, aborting...")
+    data = b''
+    while len(data) < size:
+        to_read = min(BUFSIZE, size - len(data))
+        data += stream.read(to_read)
     transfer["read"] += size
     return data
 
