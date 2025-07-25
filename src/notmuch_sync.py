@@ -14,7 +14,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import threading
 
 from pathlib import Path
 from select import select
