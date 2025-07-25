@@ -36,9 +36,8 @@ one machine and wish to sync it with another:
    if you're using mbsync.
 
 If you're starting with an empty notmuch database on one side, the first sync
-might take a long time. The second sync will, too, as it essentially verifies
-everything that was done during the first sync. Subsequent syncs should be much
-faster, unless there are a lot of changes.
+might take a long time. Subsequent syncs should be much faster, unless there are
+a lot of changes.
 
 
 ## Commandline Flags
