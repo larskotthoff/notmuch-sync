@@ -14,8 +14,6 @@ import shutil
 import struct
 import subprocess
 import sys
-import tempfile
-import threading
 
 from pathlib import Path
 from select import select
@@ -777,59 +775,49 @@ def sync_local(args):
 
     logger.info("Connecting to remote...")
     logger.debug("Command to connect to remote: %s", cmd)
-    with tempfile.TemporaryDirectory() as temp_dir:
-        stdout_pipe = os.path.join(temp_dir, 'stdout')
-        stderr_pipe = os.path.join(temp_dir, 'stderr')
-        stdin_pipe = os.path.join(temp_dir, 'stdin')
-        os.mkfifo(stdout_pipe)
-        os.mkfifo(stderr_pipe)
-        os.mkfifo(stdin_pipe)
-        fifos = {}
 
-        def _open_fifos():
-            fifos["from"] = open(stdout_pipe, 'rb')
-            fifos["err"] = open(stderr_pipe, 'rb')
-            fifos["to"] = open(stdin_pipe, 'wb')
+    read_fd, write_fd = os.pipe()
+    stdin_read = os.fdopen(read_fd, 'rb')
+    to_remote = os.fdopen(write_fd, 'wb')
+    with subprocess.Popen(
+                cmd,
+                stdin=stdin_read,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            ) as proc:
+        from_remote = proc.stdout
+        err_remote = proc.stderr
 
-        thread = threading.Thread(target=_open_fifos)
-        thread.start()
+        data = b''
+        try:
+            with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
+                prefix = os.path.join(str(dbw.default_path()), '')
+                changes_mine, changes_theirs, tchanges, sync_fname = initial_sync(dbw, prefix, from_remote, to_remote)
+                missing, fchanges, dfchanges = get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_remote, to_remote, move_on_change=True)
+                logger.debug("Missing files %s.", missing)
+                rmessages, rfiles = sync_files(dbw, prefix, missing, from_remote, to_remote)
+                record_sync(sync_fname, dbw.revision())
 
-        with subprocess.Popen(cmd,
-                stdout=open(stdout_pipe, 'wb'),
-                stderr=open(stderr_pipe, 'wb'),
-                stdin=open(stdin_pipe, 'rb')):
-            thread.join()
+            dchanges = 0
+            if args.delete:
+                dchanges = sync_deletes_local(prefix, from_remote, to_remote, args.delete_no_check)
+            if args.mbsync:
+                sync_mbsync_local(prefix, from_remote, to_remote)
 
-            data = b''
-            try:
-                with notmuch2.Database(mode=notmuch2.Database.MODE.READ_WRITE) as dbw:
-                    prefix = os.path.join(str(dbw.default_path()), '')
-                    changes_mine, changes_theirs, tchanges, sync_fname = initial_sync(dbw, prefix, fifos["from"], fifos["to"])
-                    missing, fchanges, dfchanges = get_missing_files(dbw, prefix, changes_mine, changes_theirs, fifos["from"], fifos["to"], move_on_change=True)
-                    logger.debug("Missing files %s.", missing)
-                    rmessages, rfiles = sync_files(dbw, prefix, missing, fifos["from"], fifos["to"])
-                    record_sync(sync_fname, dbw.revision())
+            logger.info("Getting change numbers from remote...")
+            remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
+            transfer["read"] += 6 * 4
+        finally:
+            ready, _, exc = select([err_remote], [], [], 0)
+            if ready and not exc:
+                data = err_remote.read()
+                # getting zero data on EOF
+                if len(data) > 0:
+                    print(f"Remote error: {data}", file=sys.stderr)
 
-                dchanges = 0
-                if args.delete:
-                    dchanges = sync_deletes_local(prefix, fifos["from"], fifos["to"], args.delete_no_check)
-                if args.mbsync:
-                    sync_mbsync_local(prefix, fifos["from"], fifos["to"])
-
-                logger.info("Getting change numbers from remote...")
-                remote_changes = struct.unpack("!IIIIII", fifos["from"].read(6 * 4))
-                transfer["read"] += 6 * 4
-            finally:
-                ready, _, exc = select([fifos["err"]], [], [], 0)
-                if ready and not exc:
-                    data = fifos["err"].read()
-                    # getting zero data on EOF
-                    if len(data) > 0:
-                        print(f"Remote error: {data}", file=sys.stderr)
-
-                fifos["to"].close()
-                fifos["from"].close()
-                fifos["err"].close()
+            to_remote.close()
+            from_remote.close()
+            err_remote.close()
 
     logger.warning("local:  %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
     logger.warning("remote: %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
