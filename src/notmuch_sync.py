@@ -15,6 +15,8 @@ import struct
 import subprocess
 import sys
 
+from typing import Any, Dict, List, Tuple, Callable, IO
+
 from pathlib import Path
 from select import select
 
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 transfer = {"read": 0, "write": 0}
 
-def digest(data):
+def digest(data: bytes) -> str:
     """
     Compute SHA256 digest of data, removing any X-TUID: lines. This is
     nececessary because mbsync adds these lines to keep track of internal
@@ -52,7 +54,7 @@ def digest(data):
     return hashlib.new("sha256", to_digest).hexdigest()
 
 
-def write(data, stream):
+def write(data: bytes, stream: IO[bytes] | None) -> None:
     """
     Write data to a stream with a 4-byte length prefix.
 
@@ -60,6 +62,8 @@ def write(data, stream):
         data (bytes): The data to write.
         stream: A writable stream supporting .write() and .flush().
     """
+    if stream is None:
+        return
     stream.write(struct.pack("!I", len(data)))
     transfer["write"] += 4
     written = stream.write(data)
@@ -69,7 +73,7 @@ def write(data, stream):
     stream.flush()
 
 
-def read(stream):
+def read(stream: IO[bytes] | None) -> bytes:
     """
     Read 4-byte length-prefixed data from a stream.
 
@@ -79,6 +83,8 @@ def read(stream):
     Returns:
         bytes: The data read from the stream.
     """
+    if stream is None:
+        return b''
     size_data = stream.read(4)
     transfer["read"] += 4
     size = struct.unpack("!I", size_data)[0]
@@ -89,7 +95,7 @@ def read(stream):
     return data
 
 
-def run_async(m1, m2):
+def run_async(m1: Callable[[], Any], m2: Callable[[], Any]) -> None:
     """
     Run two functions async. Used to read/write to streams at the same time.
 
@@ -103,7 +109,12 @@ def run_async(m1, m2):
     asyncio.run(_tmp())
 
 
-def get_changes(db, revision, prefix, sync_file):
+def get_changes(
+    db: notmuch2.Database,
+    revision: notmuch2.DbRevision,
+    prefix: str,
+    sync_file: str
+) -> Dict[str, Dict[str, Any]]:
     """
     Get changes that happened since the last sync, or everything in the DB if no previous sync.
 
@@ -139,7 +150,11 @@ def get_changes(db, revision, prefix, sync_file):
                             for msg in db.messages(f"lastmod:{rev_prev + 1}..")}
 
 
-def sync_tags(db, changes_mine, changes_theirs):
+def sync_tags(
+    db: notmuch2.Database,
+    changes_mine: Dict[str, Dict[str, Any]],
+    changes_theirs: Dict[str, Dict[str, Any]]
+) -> int:
     """
     Synchronize tags between local and remote changes. Applies tags from all
     remotely changed IDs to local messages with the same ID, overwriting any
@@ -181,7 +196,7 @@ def sync_tags(db, changes_mine, changes_theirs):
     return changes
 
 
-def record_sync(fname, revision):
+def record_sync(fname: str, revision: notmuch2.DbRevision) -> None:
     """
     Record last sync revision.
 
@@ -194,7 +209,12 @@ def record_sync(fname, revision):
         f.write(f"{revision.rev} {revision.uuid.decode()}")
 
 
-def initial_sync(dbw, prefix, from_stream, to_stream):
+def initial_sync(
+    dbw: notmuch2.Database,
+    prefix: str,
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None
+) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], int, str]:
     """
     Perform the initial synchronization of UUIDs and tag changes, which includes
     applying any remote tag changes to messages that exist locally. UUIDs and
@@ -253,7 +273,15 @@ def initial_sync(dbw, prefix, from_stream, to_stream):
     return (changes["mine"], changes["theirs"], tchanges, fname)
 
 
-def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to_stream, move_on_change=False):
+def get_missing_files(
+    dbw: notmuch2.Database,
+    prefix: str,
+    changes_mine: Dict[str, Dict[str, Any]],
+    changes_theirs: Dict[str, Dict[str, Any]],
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None,
+    move_on_change: bool = False
+) -> Tuple[Dict[str, Dict[str, Any]], int, int]:
     """
     Determine which files are missing locally compared to the remote, and handle
     file moves/copies based on SHA256 checksums. Delete any files that aren't
@@ -278,7 +306,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     ret = {}
     mcchanges = 0
     dchanges = 0
-    hashes = {}
+    hashes: dict[str, List[str]] = {}
     # check which files we need to get digests for to determine if they've
     # been moved/copied
     hashes["req_mine"] = []
@@ -379,7 +407,7 @@ def get_missing_files(dbw, prefix, changes_mine, changes_theirs, from_stream, to
     return (ret, mcchanges, dchanges)
 
 
-def send_file(fname, stream):
+def send_file(fname: str, stream: IO[bytes]) -> None:
     """
     Send a file's contents to a stream with 4-byte length prefix.
 
@@ -391,7 +419,11 @@ def send_file(fname, stream):
         write(f.read(), stream)
 
 
-def recv_file(fname, stream, overwrite_raise=True):
+def recv_file(
+    fname: str,
+    stream: IO[bytes],
+    overwrite_raise: bool=True
+) -> None:
     """
     Receive a file with a 4-byte length prefix from a stream and write it to
     disk, validating its checksum.
@@ -416,7 +448,13 @@ def recv_file(fname, stream, overwrite_raise=True):
         f.write(content)
 
 
-def sync_files(dbw, prefix, missing, from_stream, to_stream):
+def sync_files(
+    dbw: notmuch2.Database,
+    prefix: str,
+    missing: Dict[str, Dict[str, Any]],
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None
+) -> Tuple[int, int]:
     """
     Synchronize files that are missing locally or remotely.
 
@@ -479,7 +517,7 @@ def sync_files(dbw, prefix, missing, from_stream, to_stream):
     return (changes["messages"], changes["files"])
 
 
-def get_ids(prefix):
+def get_ids(prefix: str) -> List[str]:
     """
     Get all message IDs from the notmuch database, using Xapian directly (much
     faster).
@@ -494,7 +532,7 @@ def get_ids(prefix):
     message_ids = []
 
     logger.info("Getting all message IDs from DB...")
-    ghosts = {p.docid for p in db.postlist("Tghost")}
+    ghosts = {p.docid for p in db.postlist("Tghost")} # type: ignore[attr-defined]
     all_docs = set(range(1, db.get_lastdocid() + 1))
     for doc_id in all_docs - ghosts:
         try:
@@ -515,7 +553,12 @@ def get_ids(prefix):
 
 # Separate methods for local and remote to avoid sending all IDs both ways --
 # have local figure out what needs to be deleted on both sides
-def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
+def sync_deletes_local(
+    prefix: str,
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None,
+    no_check: bool = False
+) -> int:
     """
     Synchronize deletions for the local database and instruct remote to delete
     messages/files as needed.
@@ -585,7 +628,12 @@ def sync_deletes_local(prefix, from_stream, to_stream, no_check=False):
     return dels["a"]
 
 
-def sync_deletes_remote(prefix, from_stream, to_stream, no_check=False):
+def sync_deletes_remote(
+    prefix: str,
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None,
+    no_check: bool = False
+) -> int:
     """
     Receive instructions from local to delete messages/files from the remote database.
 
@@ -629,7 +677,11 @@ def sync_deletes_remote(prefix, from_stream, to_stream, no_check=False):
     return dels
 
 
-def sync_mbsync_local(prefix, from_stream, to_stream):
+def sync_mbsync_local(
+    prefix: str,
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None
+) -> None:
     """
     Synchronize local mbsync files with remote.
 
@@ -693,7 +745,11 @@ def sync_mbsync_local(prefix, from_stream, to_stream):
     logger.info("mbsync files synced.")
 
 
-def sync_mbsync_remote(prefix, from_stream, to_stream):
+def sync_mbsync_remote(
+    prefix: str,
+    from_stream: IO[bytes] | None,
+    to_stream: IO[bytes] | None
+) -> None:
     """
     Synchronize remote mbsync files with local.
 
@@ -729,7 +785,7 @@ def sync_mbsync_remote(prefix, from_stream, to_stream):
     run_async(_send_mbsync_files, _recv_mbsync_files)
 
 
-def sync_remote(args):
+def sync_remote(args: argparse.Namespace) -> None:
     """
     Run synchronization in remote mode.
 
@@ -753,7 +809,7 @@ def sync_remote(args):
     sys.stdout.buffer.flush()
 
 
-def sync_local(args):
+def sync_local(args: argparse.Namespace) -> None:
     """
     Run synchronization in local mode, communicating with the remote over SSH or
     a custom command.
@@ -803,19 +859,25 @@ def sync_local(args):
                 sync_mbsync_local(prefix, from_remote, to_remote)
 
             logger.info("Getting change numbers from remote...")
-            remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
-            transfer["read"] += 6 * 4
+            if from_remote is not None:
+                remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
+                transfer["read"] += 6 * 4
+            else:
+                remote_changes = (0,0,0,0,0,0)
         finally:
             ready, _, exc = select([err_remote], [], [], 0)
-            if ready and not exc:
+            if err_remote is not None and ready and not exc:
                 data = err_remote.read()
                 # getting zero data on EOF
                 if len(data) > 0:
                     logger.error("Remote error: %s", data)
 
-            to_remote.close()
-            from_remote.close()
-            err_remote.close()
+            if to_remote is not None:
+                to_remote.close()
+            if from_remote is not None:
+                from_remote.close()
+            if err_remote is not None:
+                err_remote.close()
 
     logger.warning("local:  %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges)
     logger.warning("remote: %s new messages,\t%s new files,\t%s files copied/moved,\t%s files deleted,\t%s messages with tag changes,\t%s messages deleted", remote_changes[3], remote_changes[5], remote_changes[1], remote_changes[2], remote_changes[0], remote_changes[4])
@@ -826,7 +888,7 @@ def sync_local(args):
         sys.exit(1)
 
 
-def main():
+def main() -> None:
     """
     Entry point for the command-line interface. Parses arguments and dispatches
     to local or remote sync.
