@@ -200,7 +200,7 @@ def test_sync_tags_files_verbose(shell):
             assert any('Sending file names missing on local...' in o for o in out)
             assert any('Receiving file names missing on remote...' in o for o in out)
             assert any('Requesting 0 hashes from remote...' in o for o in out)
-            assert any('Receiving requested hashes from remote...' in o for o in out)
+            assert any('Receiving hash requests from remote...' in o for o in out)
             assert any('Hashing 0 requested files and sending to remote...' in o for o in out)
             assert any('Receiving hashes from remote...' in o for o in out)
             assert 'Missing file names synced.' in out[18]

@@ -329,7 +329,7 @@ def get_missing_files(
         write(json.dumps(hashes["req_mine"]).encode("utf-8"), to_stream)
 
     def _recv_hashes_req():
-        logger.info("Receiving requested hashes from remote...")
+        logger.info("Receiving hash requests from remote...")
         hashes["req_theirs"] = json.loads(read(from_stream).decode("utf-8"))
         logger.debug("Hashes requested by remote %s", hashes["req_theirs"])
 
