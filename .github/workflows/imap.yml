@@ -13,7 +13,9 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-    - run: sudo cp $GITHUB_WORKSPACE/src/notmuch_sync.py /usr/bin/notmuch-sync
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
     
     - name: Install dependencies
       run: |
@@ -25,6 +27,11 @@ jobs:
           isync \
           notmuch \
           afew libnotmuch-dev python3-notmuch2 python3-xapian ssh wget
+    
+    - name: Build Rust binary
+      run: |
+        cargo build --release
+        sudo cp target/release/notmuch-sync /usr/bin/notmuch-sync
     
     - name: Setup Dovecot IMAP server
       run: |
