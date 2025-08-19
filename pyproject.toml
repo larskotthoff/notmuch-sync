@@ -8,7 +8,7 @@ include = ["notmuch_sync.py"]
 
 [project]
 name = "notmuch-sync"
-version = "0.0.2"
+version = "0.0.3"
 description = "Synchronize notmuch email databases and message files between local and remote systems, compatible with mbsync."
 authors = [
     {name = "Lars Kotthoff", email="lars@larsko.org"}
