@@ -381,6 +381,8 @@ def get_missing_files(
                                 shutil.move(src, dst)
                                 fnames_mine.append(f)
                                 fnames_mine.remove(matches[0])
+                                hashes_mine[f] = hashes_mine[matches[0]]
+                                del hashes_mine[matches[0]]
                                 dbw.add(dst)
                                 logger.info("Removing %s from DB.", src)
                                 dbw.remove(src)

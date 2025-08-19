@@ -464,6 +464,87 @@ def test_missing_files_inconsistent_move():
     assert db.find.mock_calls == [ call("foo"), call("foo") ]
 
 
+def test_missing_files_multiple_dups():
+    m = MagicMock()
+    m.ghost = False
+    db = lambda: None
+
+    db.find = MagicMock(return_value=m)
+    db.add = MagicMock(return_value=(m, True))
+    db.remove = MagicMock()
+
+    with patch("shutil.move") as sm:
+        with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f4:
+                        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x88[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                        ostream = io.BytesIO()
+                        m.filenames = MagicMock(return_value=[f1.name, f2.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        f3.write("mail one")
+                        f3.flush()
+                        f4.write("mail one")
+                        f4.flush()
+                        f3name = f3.name.removeprefix(prefix)
+                        f4name = f4.name.removeprefix(prefix)
+                        changes_mine = {}
+                        changes_theirs = {"foo": {"tags": ["foo"], "files": [f3name, f4name]}}
+                        assert ({}, 2, 0) == ns.get_missing_files(db, prefix, changes_mine, changes_theirs, istream, ostream, move_on_change=True)
+                        tmp = json.dumps([f3name, f4name])
+                        assert struct.pack("!I", len(tmp)) + tmp.encode("utf-8") + b"\x00\x00\x00\x02[]" == ostream.getvalue()
+
+                        assert sm.mock_calls == [ call(f1.name, f3.name), call(f2.name, f4.name) ]
+                        assert db.add.mock_calls == [ call(f3.name), call(f4.name) ]
+                        assert db.remove.mock_calls == [ call(f1.name), call(f2.name) ]
+                        assert m.filenames.call_count == 3
+
+    assert db.find.mock_calls == [ call("foo"), call("foo") ]
+
+
+def test_missing_files_multiple_dups_copy_move():
+    m = MagicMock()
+    m.ghost = False
+    db = lambda: None
+
+    db.find = MagicMock(return_value=m)
+    db.add = MagicMock(return_value=(m, True))
+    db.remove = MagicMock()
+
+    with patch("shutil.move") as sm:
+        with patch("shutil.copy") as sc:
+            with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f1:
+                with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f2:
+                    with NamedTemporaryFile(mode="w+t", prefix="notmuch-sync-test-tmp-") as f3:
+                        istream = io.BytesIO(b"\x00\x00\x00\x02[]\x00\x00\x00\x88[\"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\", \"a983f58ef9ef755c4e5e3755f10cf3e08d9b189b388bcb59d29b56d35d7d6b9d\"]")
+                        ostream = io.BytesIO()
+                        m.filenames = MagicMock(return_value=[f1.name])
+                        f1.write("mail one")
+                        f1.flush()
+                        f2.write("mail one")
+                        f2.flush()
+                        f3.write("mail one")
+                        f3.flush()
+                        f2name = f2.name.removeprefix(prefix)
+                        f3name = f3.name.removeprefix(prefix)
+                        changes_mine = {}
+                        changes_theirs = {"foo": {"tags": ["foo"], "files": [f2name, f3name]}}
+                        assert ({}, 2, 0) == ns.get_missing_files(db, prefix, changes_mine, changes_theirs, istream, ostream, move_on_change=True)
+                        tmp = json.dumps([f2name, f3name])
+                        assert struct.pack("!I", len(tmp)) + tmp.encode("utf-8") + b"\x00\x00\x00\x02[]" == ostream.getvalue()
+
+                        assert sm.mock_calls == [ call(f1.name, f2.name) ]
+                        assert sc.mock_calls == [ call(f2.name, f3.name) ]
+                        assert db.add.mock_calls == [ call(f2.name), call(f3.name) ]
+                        assert db.remove.mock_calls == [ call(f1.name) ]
+                        assert m.filenames.call_count == 3
+
+    assert db.find.mock_calls == [ call("foo"), call("foo") ]
+
+
 def test_missing_files_moved():
     m = MagicMock()
     m.ghost = False
