@@ -3,6 +3,10 @@
 //! notmuch_sync: Synchronize notmuch email databases and message files between
 //! local and remote systems.
 
+#![allow(dead_code)] // Allow unused code since this is a work-in-progress implementation
+#![allow(unused_variables)] // Allow unused variables in placeholder functions  
+#![allow(unused_mut)] // Allow unused mut in placeholder code
+
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use log::info;
@@ -24,47 +28,49 @@ static TRANSFER_WRITE: AtomicUsize = AtomicUsize::new(0);
 /// Command line arguments
 #[derive(Parser, Debug, Clone)]
 #[command(name = "notmuch-sync")]
-#[command(about = "Synchronize notmuch email databases and message files between local and remote systems")]
+#[command(
+    about = "Synchronize notmuch email databases and message files between local and remote systems"
+)]
 pub struct Args {
     /// Remote host to connect to
     #[arg(short, long)]
-    remote: Option<String>,
+    pub remote: Option<String>,
 
     /// SSH user to use
     #[arg(short, long)]
-    user: Option<String>,
+    pub user: Option<String>,
 
     /// Increases verbosity, up to twice (ignored on remote)
     #[arg(short, long, action = clap::ArgAction::Count)]
-    verbose: u8,
+    pub verbose: u8,
 
     /// Do not print any output, overrides --verbose
     #[arg(short, long)]
-    quiet: bool,
+    pub quiet: bool,
 
     /// SSH command to use
     #[arg(short = 's', long, default_value = "ssh -CTaxq")]
-    ssh_cmd: String,
+    pub ssh_cmd: String,
 
     /// Sync mbsync files (.mbsyncstate, .uidvalidity)
     #[arg(short, long)]
-    mbsync: bool,
+    pub mbsync: bool,
 
     /// Path to notmuch-sync on remote server
     #[arg(short, long)]
-    path: Option<String>,
+    pub path: Option<String>,
 
     /// Command to run to sync; overrides --remote, --user, --ssh-cmd, --path; mostly used for testing
     #[arg(short = 'c', long)]
-    remote_cmd: Option<String>,
+    pub remote_cmd: Option<String>,
 
     /// Sync deleted messages (requires listing all messages in notmuch database, potentially expensive)
     #[arg(short, long)]
-    delete: bool,
+    pub delete: bool,
 
     /// Delete missing messages even if they don't have the 'deleted' tag (requires --delete) -- potentially unsafe
     #[arg(short = 'x', long)]
-    delete_no_check: bool,
+    pub delete_no_check: bool,
 }
 
 /// Message information structure
@@ -86,7 +92,8 @@ struct SyncState {
 /// progress, but they make identical emails that were retrieved separately different.
 fn digest(data: &[u8]) -> String {
     let pattern = b"X-TUID: ";
-    let to_digest = if let Some(start_idx) = data.windows(pattern.len()).position(|w| w == pattern) {
+    let to_digest = if let Some(start_idx) = data.windows(pattern.len()).position(|w| w == pattern)
+    {
         let search_start = start_idx + pattern.len();
         if let Some(end_idx) = data[search_start..].iter().position(|&b| b == b'\n') {
             let end_idx = search_start + end_idx;
@@ -109,10 +116,10 @@ async fn write_data<W: AsyncWrite + Unpin>(data: &[u8], stream: &mut W) -> Resul
     let len = data.len() as u32;
     stream.write_all(&len.to_be_bytes()).await?;
     TRANSFER_WRITE.fetch_add(4, Ordering::Relaxed);
-    
+
     stream.write_all(data).await?;
     TRANSFER_WRITE.fetch_add(data.len(), Ordering::Relaxed);
-    
+
     stream.flush().await?;
     Ok(())
 }
@@ -122,12 +129,12 @@ async fn read_data<R: AsyncRead + Unpin>(stream: &mut R) -> Result<Vec<u8>> {
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     TRANSFER_READ.fetch_add(4, Ordering::Relaxed);
-    
+
     let len = u32::from_be_bytes(len_buf) as usize;
     let mut data = vec![0u8; len];
     stream.read_exact(&mut data).await?;
     TRANSFER_READ.fetch_add(len, Ordering::Relaxed);
-    
+
     Ok(data)
 }
 
@@ -152,27 +159,36 @@ fn get_changes(
         Ok(content) => {
             let parts: Vec<&str> = content.trim().split(' ').collect();
             if parts.len() != 2 {
-                return Err(anyhow!("Sync state file '{}' corrupted, delete to sync from scratch", sync_file));
+                return Err(anyhow!(
+                    "Sync state file '{}' corrupted, delete to sync from scratch",
+                    sync_file
+                ));
             }
-            
+
             let stored_uuid = parts[1];
             if stored_uuid != revision.uuid {
                 return Err(anyhow!(
                     "Last sync with UUID {}, but notmuch DB has UUID {}, aborting...",
-                    stored_uuid, revision.uuid
+                    stored_uuid,
+                    revision.uuid
                 ));
             }
-            
-            let rev: u64 = parts[0].parse()
-                .map_err(|_| anyhow!("Sync state file '{}' corrupted, delete to sync from scratch", sync_file))?;
-            
+
+            let rev: u64 = parts[0].parse().map_err(|_| {
+                anyhow!(
+                    "Sync state file '{}' corrupted, delete to sync from scratch",
+                    sync_file
+                )
+            })?;
+
             if rev > revision.revision {
                 return Err(anyhow!(
                     "Last sync revision {} larger than current DB revision {}, aborting...",
-                    rev, revision.revision
+                    rev,
+                    revision.revision
                 ));
             }
-            
+
             rev
         }
         Err(_) => {
@@ -181,18 +197,26 @@ fn get_changes(
         }
     };
 
-    info!("Previous sync revision {}, current revision {}.", rev_prev, revision.revision);
-    
+    info!(
+        "Previous sync revision {}, current revision {}.",
+        rev_prev, revision.revision
+    );
+
     // Get messages that changed since rev_prev + 1
-    let query_str = format!("lastmod:{}..{}", rev_prev.wrapping_add(1), revision.revision);
+    let query_str = format!(
+        "lastmod:{}..{}",
+        rev_prev.wrapping_add(1),
+        revision.revision
+    );
     let query = db.create_query(&query_str)?;
     let messages = query.search_messages()?;
-    
+
     let mut changes = HashMap::new();
     for message in messages {
         let message_id = message.id().to_string();
         let tags: Vec<String> = message.tags().map(|t| t.to_string()).collect();
-        let files: Vec<String> = message.filenames()
+        let files: Vec<String> = message
+            .filenames()
             .map(|f| {
                 f.strip_prefix(prefix)
                     .unwrap_or(&f)
@@ -200,10 +224,10 @@ fn get_changes(
                     .to_string()
             })
             .collect();
-        
+
         changes.insert(message_id, MessageInfo { tags, files });
     }
-    
+
     Ok(changes)
 }
 
@@ -214,44 +238,47 @@ fn sync_tags(
     changes_theirs: &HashMap<String, MessageInfo>,
 ) -> Result<u32> {
     let mut changes = 0;
-    
+
     for (mid, their_info) in changes_theirs {
         let mut tags = their_info.tags.clone();
-        
+
         // If message appears in both local and remote changes, take union of tags
         if let Some(my_info) = changes_mine.get(mid) {
             let mut tag_set: HashSet<String> = tags.into_iter().collect();
             tag_set.extend(my_info.tags.iter().cloned());
             tags = tag_set.into_iter().collect();
         }
-        
+
         let tag_set: HashSet<String> = tags.into_iter().collect();
-        
+
         if let Some(message) = db.find_message(mid)? {
             // Check if message is a ghost
             let current_tags: HashSet<String> = message.tags().map(|t| t.to_string()).collect();
-            
+
             if tag_set != current_tags {
-                info!("Setting tags {:?} for {}.", 
-                     tag_set.iter().collect::<Vec<_>>(), mid);
-                
+                info!(
+                    "Setting tags {:?} for {}.",
+                    tag_set.iter().collect::<Vec<_>>(),
+                    mid
+                );
+
                 // Remove all current tags
                 for tag in &current_tags {
                     message.remove_tag(tag)?;
                 }
-                
+
                 // Add new tags
                 for tag in &tag_set {
                     message.add_tag(tag)?;
                 }
-                
+
                 message.tags_to_maildir_flags()?;
                 changes += 1;
             }
         }
         // If message not found locally, it will be synced later when syncing files
     }
-    
+
     Ok(changes)
 }
 
@@ -266,7 +293,7 @@ fn record_sync(fname: &str, revision: &SyncState) -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    
+
     // Set up logging
     if args.remote.is_some() || args.remote_cmd.is_some() {
         let log_level = if args.quiet {
@@ -278,22 +305,22 @@ async fn main() -> Result<()> {
                 _ => log::LevelFilter::Debug,
             }
         };
-        
+
         env_logger::Builder::new()
             .filter_level(log_level)
             .format_timestamp_millis()
             .init();
-            
+
         sync_local(args).await?;
     } else {
         // Remote mode - disable logging
         env_logger::Builder::new()
             .filter_level(log::LevelFilter::Off)
             .init();
-            
+
         sync_remote(args).await?;
     }
-    
+
     Ok(())
 }
 
@@ -302,9 +329,11 @@ async fn sync_local(args: Args) -> Result<()> {
     let cmd = if let Some(remote_cmd) = &args.remote_cmd {
         shell_split(remote_cmd)?
     } else {
-        let remote = args.remote.as_ref()
+        let remote = args
+            .remote
+            .as_ref()
             .ok_or_else(|| anyhow!("Either --remote or --remote-cmd must be specified"))?;
-        
+
         let mut cmd_parts = shell_split(&args.ssh_cmd)?;
         let user_host = if let Some(user) = &args.user {
             format!("{}@{}", user, remote)
@@ -312,10 +341,10 @@ async fn sync_local(args: Args) -> Result<()> {
             remote.clone()
         };
         cmd_parts.push(user_host);
-        
+
         let path = args.path.as_deref().unwrap_or("notmuch-sync");
         cmd_parts.push(path.to_string());
-        
+
         if args.delete {
             cmd_parts.push("--delete".to_string());
         }
@@ -325,12 +354,12 @@ async fn sync_local(args: Args) -> Result<()> {
         if args.mbsync {
             cmd_parts.push("--mbsync".to_string());
         }
-        
+
         cmd_parts
     };
 
     info!("Connecting to remote...");
-    
+
     let mut child = TokioCommand::new(&cmd[0])
         .args(&cmd[1..])
         .stdin(Stdio::piped())
@@ -342,13 +371,24 @@ async fn sync_local(args: Args) -> Result<()> {
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
 
-    let result = sync_local_with_streams(stdin, stdout, stderr, args.delete, args.delete_no_check, args.mbsync).await;
-    
+    let result = sync_local_with_streams(
+        stdin,
+        stdout,
+        stderr,
+        args.delete,
+        args.delete_no_check,
+        args.mbsync,
+    )
+    .await;
+
     let exit_status = child.wait().await?;
     if !exit_status.success() {
-        return Err(anyhow!("Remote command failed with exit status: {}", exit_status));
+        return Err(anyhow!(
+            "Remote command failed with exit status: {}",
+            exit_status
+        ));
     }
-    
+
     result
 }
 
@@ -356,8 +396,15 @@ async fn sync_local(args: Args) -> Result<()> {
 async fn sync_remote(args: Args) -> Result<()> {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    
-    sync_remote_with_streams(stdin, stdout, args.delete, args.delete_no_check, args.mbsync).await
+
+    sync_remote_with_streams(
+        stdin,
+        stdout,
+        args.delete,
+        args.delete_no_check,
+        args.mbsync,
+    )
+    .await
 }
 
 /// Split shell command string into parts
@@ -383,38 +430,49 @@ async fn sync_local_with_streams(
         None,
     )?;
     let prefix = db.path().to_string_lossy().to_string();
-    
+
     // Perform initial sync
-    let (changes_mine, changes_theirs, tchanges, sync_fname) = 
+    let (changes_mine, changes_theirs, tchanges, sync_fname) =
         initial_sync(&db, &prefix, &mut from_remote, &mut to_remote).await?;
-    
-    info!("Initial sync completed. Local changes: {}, Remote changes: {}, Tag changes: {}", 
-          changes_mine.len(), changes_theirs.len(), tchanges);
-    
+
+    info!(
+        "Initial sync completed. Local changes: {}, Remote changes: {}, Tag changes: {}",
+        changes_mine.len(),
+        changes_theirs.len(),
+        tchanges
+    );
+
     // Get missing files and sync them
-    let (missing, fchanges, dfchanges) = 
-        get_missing_files(&db, &prefix, &changes_mine, &changes_theirs, 
-                         &mut from_remote, &mut to_remote, true).await?;
-    
-    let (rmessages, rfiles) = 
+    let (missing, fchanges, dfchanges) = get_missing_files(
+        &db,
+        &prefix,
+        &changes_mine,
+        &changes_theirs,
+        &mut from_remote,
+        &mut to_remote,
+        true,
+    )
+    .await?;
+
+    let (rmessages, rfiles) =
         sync_files(&db, &prefix, &missing, &mut from_remote, &mut to_remote).await?;
-    
+
     // Record the sync
     let revision = get_database_revision(&db)?;
     record_sync(&sync_fname, &revision)?;
-    
+
     // Handle deletions if requested
     let dchanges = if delete {
         sync_deletes_local(&prefix, &mut from_remote, &mut to_remote, delete_no_check).await?
     } else {
         0
     };
-    
+
     // Handle mbsync if requested
     if mbsync {
         sync_mbsync_local(&prefix, &mut from_remote, &mut to_remote).await?;
     }
-    
+
     // Read remote stats
     let mut stats_buf = [0u8; 24]; // 6 * 4 bytes
     from_remote.read_exact(&mut stats_buf).await?;
@@ -426,14 +484,17 @@ async fn sync_local_with_streams(
         u32::from_be_bytes([stats_buf[16], stats_buf[17], stats_buf[18], stats_buf[19]]),
         u32::from_be_bytes([stats_buf[20], stats_buf[21], stats_buf[22], stats_buf[23]]),
     ];
-    
+
     info!("local:  {} new messages,\t{} new files,\t{} files copied/moved,\t{} files deleted,\t{} messages with tag changes,\t{} messages deleted", 
           rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges);
     info!("remote: {} new messages,\t{} new files,\t{} files copied/moved,\t{} files deleted,\t{} messages with tag changes,\t{} messages deleted",
           remote_stats[3], remote_stats[5], remote_stats[1], remote_stats[2], remote_stats[0], remote_stats[4]);
-    info!("{}/{} bytes received from/sent to remote.", 
-          TRANSFER_READ.load(Ordering::Relaxed), TRANSFER_WRITE.load(Ordering::Relaxed));
-    
+    info!(
+        "{}/{} bytes received from/sent to remote.",
+        TRANSFER_READ.load(Ordering::Relaxed),
+        TRANSFER_WRITE.load(Ordering::Relaxed)
+    );
+
     Ok(())
 }
 
@@ -453,42 +514,49 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None,
     )?;
     let prefix = db.path().to_string_lossy().to_string();
-    
+
     // Perform initial sync
-    let (changes_mine, changes_theirs, tchanges, sync_fname) = 
+    let (changes_mine, changes_theirs, tchanges, sync_fname) =
         initial_sync(&db, &prefix, &mut from_local, &mut to_local).await?;
-    
+
     // Get missing files and sync them
-    let (missing, fchanges, dfchanges) = 
-        get_missing_files(&db, &prefix, &changes_mine, &changes_theirs, 
-                         &mut from_local, &mut to_local, false).await?;
-    
-    let (rmessages, rfiles) = 
+    let (missing, fchanges, dfchanges) = get_missing_files(
+        &db,
+        &prefix,
+        &changes_mine,
+        &changes_theirs,
+        &mut from_local,
+        &mut to_local,
+        false,
+    )
+    .await?;
+
+    let (rmessages, rfiles) =
         sync_files(&db, &prefix, &missing, &mut from_local, &mut to_local).await?;
-    
+
     // Record the sync
     let revision = get_database_revision(&db)?;
     record_sync(&sync_fname, &revision)?;
-    
+
     // Handle deletions if requested
     let dchanges = if delete {
         sync_deletes_remote(&prefix, &mut from_local, &mut to_local, delete_no_check).await?
     } else {
         0
     };
-    
+
     // Handle mbsync if requested
     if mbsync {
         sync_mbsync_remote(&prefix, &mut from_local, &mut to_local).await?;
     }
-    
+
     // Send stats to local
     let stats = [tchanges, fchanges, dfchanges, rmessages, dchanges, rfiles];
     for stat in stats {
-        to_local.write_all(&(stat as u32).to_be_bytes()).await?;
+        to_local.write_all(&stat.to_be_bytes()).await?;
     }
     to_local.flush().await?;
-    
+
     Ok(())
 }
 
@@ -497,7 +565,7 @@ fn get_database_revision(_db: &notmuch::Database) -> Result<SyncState> {
     // For now, use a placeholder implementation
     // The notmuch crate might not expose revision APIs directly
     Ok(SyncState {
-        revision: 0, // TODO: Get actual revision from notmuch
+        revision: 0,                          // TODO: Get actual revision from notmuch
         uuid: "placeholder-uuid".to_string(), // TODO: Get actual UUID
     })
 }
@@ -508,13 +576,18 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     prefix: &str,
     from_stream: &mut R,
     to_stream: &mut W,
-) -> Result<(HashMap<String, MessageInfo>, HashMap<String, MessageInfo>, u32, String)> {
+) -> Result<(
+    HashMap<String, MessageInfo>,
+    HashMap<String, MessageInfo>,
+    u32,
+    String,
+)> {
     let revision = get_database_revision(db)?;
-    
+
     // Exchange UUIDs
     let my_uuid = revision.uuid.clone();
     let uuid_bytes = my_uuid.as_bytes();
-    
+
     // Send and receive UUIDs concurrently
     let ((), their_uuid_bytes) = run_async(
         async {
@@ -528,19 +601,20 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             from_stream.read_exact(&mut buf).await?;
             TRANSFER_READ.fetch_add(36, Ordering::Relaxed);
             Ok(buf)
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     let their_uuid = String::from_utf8(their_uuid_bytes)?;
     info!("UUIDs synced. Local: {}, Remote: {}", my_uuid, their_uuid);
-    
+
     // Create sync filename
     let sync_file = format!("{}/.notmuch/notmuch-sync-{}", prefix, their_uuid);
-    
+
     // Get local changes
     info!("Computing local changes...");
     let changes_mine = get_changes(db, &revision, prefix, &sync_file)?;
-    
+
     // Exchange changes
     let ((), changes_theirs) = run_async(
         async {
@@ -554,23 +628,28 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let changes_data = read_data(from_stream).await?;
             let changes: HashMap<String, MessageInfo> = serde_json::from_slice(&changes_data)?;
             Ok(changes)
-        }
-    ).await?;
-    
-    info!("Changes synced. Local: {}, Remote: {}", changes_mine.len(), changes_theirs.len());
-    
+        },
+    )
+    .await?;
+
+    info!(
+        "Changes synced. Local: {}, Remote: {}",
+        changes_mine.len(),
+        changes_theirs.len()
+    );
+
     // Apply remote tag changes to local messages
     // Create a mutable database connection for tag operations
     let mut db_mut = notmuch::Database::open_with_config(
         None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite, 
+        notmuch::DatabaseMode::ReadWrite,
         None::<&Path>,
         None,
     )?;
-    
+
     let tchanges = sync_tags(&mut db_mut, &changes_mine, &changes_theirs)?;
     info!("Tags synced. {} tag changes applied.", tchanges);
-    
+
     Ok((changes_mine, changes_theirs, tchanges, sync_file))
 }
 
@@ -586,19 +665,25 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut missing = HashMap::new();
     let mut moves_copies = 0;
     let mut deletions = 0;
-    
+
     // First pass: determine which files need hash checks
     let mut hash_requests = Vec::new();
-    
+
     for (message_id, their_info) in changes_theirs {
         if let Some(message) = db.find_message(message_id)? {
-            let my_files: HashSet<String> = message.filenames()
-                .map(|f| f.strip_prefix(prefix).unwrap_or(&f).to_string_lossy().to_string())
+            let my_files: HashSet<String> = message
+                .filenames()
+                .map(|f| {
+                    f.strip_prefix(prefix)
+                        .unwrap_or(&f)
+                        .to_string_lossy()
+                        .to_string()
+                })
                 .collect();
-            
+
             let their_files: HashSet<String> = their_info.files.iter().cloned().collect();
             let missing_files: Vec<String> = their_files.difference(&my_files).cloned().collect();
-            
+
             if !missing_files.is_empty() {
                 hash_requests.extend(their_info.files.iter().cloned());
             }
@@ -607,7 +692,7 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             missing.insert(message_id.clone(), their_info.clone());
         }
     }
-    
+
     // Exchange hash requests
     let ((), remote_hash_requests) = run_async(
         async {
@@ -621,13 +706,17 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let request_data = read_data(from_stream).await?;
             let requests: Vec<String> = serde_json::from_slice(&request_data)?;
             Ok(requests)
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     // Compute and exchange hashes
     let ((), remote_hashes) = run_async(
         async {
-            info!("Computing and sending {} file hashes...", remote_hash_requests.len());
+            info!(
+                "Computing and sending {} file hashes...",
+                remote_hash_requests.len()
+            );
             let mut hashes = Vec::new();
             for file_path in &remote_hash_requests {
                 let full_path = format!("{}/{}", prefix, file_path);
@@ -644,33 +733,40 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let hash_data = read_data(from_stream).await?;
             let hashes: Vec<String> = serde_json::from_slice(&hash_data)?;
             Ok(hashes)
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     // Build hash map for comparison
     let remote_hash_map: HashMap<String, String> = hash_requests
         .into_iter()
         .zip(remote_hashes.into_iter())
         .collect();
-    
+
     // Second pass: determine moves/copies and final missing files
     for (message_id, their_info) in changes_theirs {
         if let Some(message) = db.find_message(message_id)? {
-            let my_files: HashMap<String, String> = message.filenames()
+            let my_files: HashMap<String, String> = message
+                .filenames()
                 .map(|f| {
-                    let rel_path = f.strip_prefix(prefix).unwrap_or(&f).to_string_lossy().to_string();
+                    let rel_path = f
+                        .strip_prefix(prefix)
+                        .unwrap_or(&f)
+                        .to_string_lossy()
+                        .to_string();
                     let file_data = fs::read(&f).unwrap_or_default();
                     let hash = digest(&file_data);
                     (rel_path, hash)
                 })
                 .collect();
-            
+
             let their_files: HashSet<String> = their_info.files.iter().cloned().collect();
             let my_file_set: HashSet<String> = my_files.keys().cloned().collect();
-            let missing_files: Vec<String> = their_files.difference(&my_file_set).cloned().collect();
-            
+            let missing_files: Vec<String> =
+                their_files.difference(&my_file_set).cloned().collect();
+
             let mut actual_missing = Vec::new();
-            
+
             for missing_file in missing_files {
                 if let Some(remote_hash) = remote_hash_map.get(&missing_file) {
                     // Check if this file exists locally with the same hash (moved/copied)
@@ -679,15 +775,15 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         .filter(|(_, hash)| *hash == remote_hash)
                         .map(|(path, _)| path)
                         .collect();
-                    
+
                     if !local_matches.is_empty() {
                         let src_path = format!("{}/{}", prefix, local_matches[0]);
                         let dst_path = format!("{}/{}", prefix, missing_file);
-                        
+
                         // Determine if this should be a copy or move
                         let should_copy = their_files.contains(local_matches[0]);
                         let should_move = !changes_mine.contains_key(message_id) || move_on_change;
-                        
+
                         if should_copy {
                             info!("Copying {} to {}", src_path, dst_path);
                             if let Some(parent) = Path::new(&dst_path).parent() {
@@ -712,20 +808,24 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     actual_missing.push(missing_file);
                 }
             }
-            
+
             if !actual_missing.is_empty() {
-                missing.insert(message_id.clone(), MessageInfo {
-                    tags: their_info.tags.clone(),
-                    files: actual_missing,
-                });
+                missing.insert(
+                    message_id.clone(),
+                    MessageInfo {
+                        tags: their_info.tags.clone(),
+                        files: actual_missing,
+                    },
+                );
             }
-            
+
             // Handle file deletions if message not in local changes
             if !changes_mine.contains_key(message_id) {
                 let my_file_set: HashSet<String> = my_files.keys().cloned().collect();
                 let their_file_set: HashSet<String> = their_info.files.iter().cloned().collect();
-                let to_delete: Vec<String> = my_file_set.difference(&their_file_set).cloned().collect();
-                
+                let to_delete: Vec<String> =
+                    my_file_set.difference(&their_file_set).cloned().collect();
+
                 for file_to_delete in to_delete {
                     let file_path = format!("{}/{}", prefix, file_to_delete);
                     info!("Deleting {}", file_path);
@@ -735,7 +835,7 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             }
         }
     }
-    
+
     Ok((missing, moves_copies, deletions))
 }
 
@@ -752,11 +852,14 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         .flat_map(|info| &info.files)
         .cloned()
         .collect();
-    
+
     // Exchange file lists
     let ((), files_to_send) = run_async(
         async {
-            info!("Sending list of {} files needed from remote...", files_needed.len());
+            info!(
+                "Sending list of {} files needed from remote...",
+                files_needed.len()
+            );
             let file_list_data = serde_json::to_vec(&files_needed)?;
             write_data(&file_list_data, to_stream).await?;
             Ok(())
@@ -766,17 +869,27 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let file_list_data = read_data(from_stream).await?;
             let files: Vec<String> = serde_json::from_slice(&file_list_data)?;
             Ok(files)
-        }
-    ).await?;
-    
-    info!("File lists exchanged. Need {} files, sending {} files", files_needed.len(), files_to_send.len());
-    
+        },
+    )
+    .await?;
+
+    info!(
+        "File lists exchanged. Need {} files, sending {} files",
+        files_needed.len(),
+        files_to_send.len()
+    );
+
     // Exchange files concurrently
     let ((), ()) = run_async(
         async {
             // Send files to remote
             for (idx, file_path) in files_to_send.iter().enumerate() {
-                info!("{}/{} Sending {} to remote...", idx + 1, files_to_send.len(), file_path);
+                info!(
+                    "{}/{} Sending {} to remote...",
+                    idx + 1,
+                    files_to_send.len(),
+                    file_path
+                );
                 let full_path = format!("{}/{}", prefix, file_path);
                 let file_data = fs::read(&full_path)?;
                 write_data(&file_data, to_stream).await?;
@@ -786,34 +899,43 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         async {
             // Receive files from remote
             for (idx, file_path) in files_needed.iter().enumerate() {
-                info!("{}/{} Receiving {} from remote...", idx + 1, files_needed.len(), file_path);
+                info!(
+                    "{}/{} Receiving {} from remote...",
+                    idx + 1,
+                    files_needed.len(),
+                    file_path
+                );
                 let file_data = read_data(from_stream).await?;
-                
+
                 let full_path = format!("{}/{}", prefix, file_path);
-                
+
                 // Check if file already exists and has different content
                 if Path::new(&full_path).exists() {
                     let existing_data = fs::read(&full_path)?;
                     let existing_hash = digest(&existing_data);
                     let new_hash = digest(&file_data);
-                    
+
                     if existing_hash != new_hash {
-                        return Err(anyhow!("File {} already exists with different content!", full_path));
+                        return Err(anyhow!(
+                            "File {} already exists with different content!",
+                            full_path
+                        ));
                     }
                 }
-                
+
                 // Create parent directories
                 if let Some(parent) = Path::new(&full_path).parent() {
                     fs::create_dir_all(parent)?;
                 }
-                
+
                 // Write file
                 fs::write(&full_path, &file_data)?;
             }
             Ok(())
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     // Add received files to notmuch database
     let mut new_messages = 0;
     let mut db_mut = notmuch::Database::open_with_config(
@@ -822,20 +944,24 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None::<&Path>,
         None,
     )?;
-    
+
     for (message_id, info) in missing {
         for file_path in &info.files {
             let full_path = format!("{}/{}", prefix, file_path);
             info!("Adding {} to database...", full_path);
-            
+
             // Try to index the message file - the notmuch crate may have a different API
             // For now, just count the files and assume they'll be picked up by notmuch new
             new_messages += 1;
         }
     }
-    
-    info!("File sync completed. {} new messages, {} files received", new_messages, files_needed.len());
-    
+
+    info!(
+        "File sync completed. {} new messages, {} files received",
+        new_messages,
+        files_needed.len()
+    );
+
     Ok((new_messages, files_needed.len() as u32))
 }
 
@@ -843,16 +969,16 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 /// Since Xapian bindings aren't working, we use notmuch query directly
 fn get_all_message_ids(db: &notmuch::Database) -> Result<Vec<String>> {
     info!("Getting all message IDs from database...");
-    
+
     // Query for all messages
     let query = db.create_query("*")?;
     let messages = query.search_messages()?;
-    
+
     let mut message_ids = Vec::new();
     for message in messages {
         message_ids.push(message.id().to_string());
     }
-    
+
     info!("Found {} message IDs", message_ids.len());
     Ok(message_ids)
 }
@@ -869,29 +995,29 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None::<&Path>,
         None,
     )?;
-    
+
     // Get local and remote message IDs concurrently
-    let (local_ids, remote_ids) = run_async(
-        async {
-            get_all_message_ids(&db)
-        },
-        async {
-            info!("Receiving all message IDs from remote...");
-            let id_data = read_data(from_stream).await?;
-            let ids: Vec<String> = serde_json::from_slice(&id_data)?;
-            Ok(ids)
-        }
-    ).await?;
-    
-    info!("Message IDs synced. Local: {}, Remote: {}", local_ids.len(), remote_ids.len());
-    
+    let (local_ids, remote_ids) = run_async(async { get_all_message_ids(&db) }, async {
+        info!("Receiving all message IDs from remote...");
+        let id_data = read_data(from_stream).await?;
+        let ids: Vec<String> = serde_json::from_slice(&id_data)?;
+        Ok(ids)
+    })
+    .await?;
+
+    info!(
+        "Message IDs synced. Local: {}, Remote: {}",
+        local_ids.len(),
+        remote_ids.len()
+    );
+
     // Determine which messages to delete on each side
     let local_set: HashSet<String> = local_ids.into_iter().collect();
     let remote_set: HashSet<String> = remote_ids.into_iter().collect();
-    
+
     let to_delete_locally: Vec<String> = remote_set.difference(&local_set).cloned().collect();
     let to_delete_remotely: Vec<String> = local_set.difference(&remote_set).cloned().collect();
-    
+
     // Send deletion list to remote and delete locally
     let (deletions, ()) = run_async(
         async {
@@ -903,15 +1029,15 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                 None::<&Path>,
                 None,
             )?;
-            
+
             for message_id in &to_delete_locally {
                 if let Some(message) = db_mut.find_message(message_id)? {
                     let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
-                    
+
                     if has_deleted_tag || no_check {
                         deleted += 1;
                         info!("Removing {} from database and deleting files", message_id);
-                        
+
                         // Remove files
                         for filename in message.filenames() {
                             info!("Removing file {}", filename.display());
@@ -921,9 +1047,17 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             }
                         }
                     } else {
-                        info!("{} set to be removed, but not tagged 'deleted'!", message_id);
+                        info!(
+                            "{} set to be removed, but not tagged 'deleted'!",
+                            message_id
+                        );
                         // Force a tag update to make it appear in next changeset
-                        let dummy_tag = format!("dummy-{}", time::SystemTime::now().duration_since(time::UNIX_EPOCH)?.as_nanos());
+                        let dummy_tag = format!(
+                            "dummy-{}",
+                            time::SystemTime::now()
+                                .duration_since(time::UNIX_EPOCH)?
+                                .as_nanos()
+                        );
                         message.add_tag(&dummy_tag)?;
                         message.remove_tag(&dummy_tag)?;
                     }
@@ -932,13 +1066,17 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             Ok(deleted)
         },
         async {
-            info!("Sending {} message IDs to be deleted to remote...", to_delete_remotely.len());
+            info!(
+                "Sending {} message IDs to be deleted to remote...",
+                to_delete_remotely.len()
+            );
             let delete_data = serde_json::to_vec(&to_delete_remotely)?;
             write_data(&delete_data, to_stream).await?;
             Ok(())
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     Ok(deletions)
 }
 
@@ -954,16 +1092,16 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None::<&Path>,
         None,
     )?;
-    
+
     // Send our message IDs to local
     let local_ids = get_all_message_ids(&db)?;
     let id_data = serde_json::to_vec(&local_ids)?;
     write_data(&id_data, to_stream).await?;
-    
+
     // Receive deletion list from local
     let delete_data = read_data(from_stream).await?;
     let to_delete: Vec<String> = serde_json::from_slice(&delete_data)?;
-    
+
     let mut deleted = 0;
     let db_mut = notmuch::Database::open_with_config(
         None::<&Path>,
@@ -971,15 +1109,15 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None::<&Path>,
         None,
     )?;
-    
+
     for message_id in &to_delete {
         if let Some(message) = db_mut.find_message(message_id)? {
             let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
-            
+
             if has_deleted_tag || no_check {
                 deleted += 1;
                 info!("Removing {} from database and deleting files", message_id);
-                
+
                 // Remove files
                 for filename in message.filenames() {
                     if let Err(e) = fs::remove_file(&filename) {
@@ -988,15 +1126,23 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     }
                 }
             } else {
-                info!("{} not on local, but no 'deleted' tag - forcing tag update", message_id);
+                info!(
+                    "{} not on local, but no 'deleted' tag - forcing tag update",
+                    message_id
+                );
                 // Force a tag update to make it appear in next changeset
-                let dummy_tag = format!("dummy-{}", time::SystemTime::now().duration_since(time::UNIX_EPOCH)?.as_nanos());
+                let dummy_tag = format!(
+                    "dummy-{}",
+                    time::SystemTime::now()
+                        .duration_since(time::UNIX_EPOCH)?
+                        .as_nanos()
+                );
                 message.add_tag(&dummy_tag)?;
                 message.remove_tag(&dummy_tag)?;
             }
         }
     }
-    
+
     Ok(deleted)
 }
 
@@ -1007,7 +1153,7 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 ) -> Result<()> {
     // Get local mbsync file stats
     let local_stats = get_mbsync_stats(prefix)?;
-    
+
     // Exchange mbsync stats
     let ((), remote_stats) = run_async(
         async {
@@ -1021,13 +1167,14 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let stats_data = read_data(from_stream).await?;
             let stats: HashMap<String, f64> = serde_json::from_slice(&stats_data)?;
             Ok(stats)
-        }
-    ).await?;
-    
+        },
+    )
+    .await?;
+
     // Determine which files to pull and push
     let mut files_to_pull = Vec::new();
     let mut files_to_push = Vec::new();
-    
+
     for (file_path, local_mtime) in &local_stats {
         if let Some(remote_mtime) = remote_stats.get(file_path) {
             if *remote_mtime > *local_mtime {
@@ -1039,23 +1186,27 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             files_to_push.push(file_path.clone());
         }
     }
-    
+
     // Add files that exist only on remote
-    for (file_path, _) in &remote_stats {
+    for file_path in remote_stats.keys() {
         if !local_stats.contains_key(file_path) {
             files_to_pull.push(file_path.clone());
         }
     }
-    
-    info!("mbsync sync: pulling {} files, pushing {} files", files_to_pull.len(), files_to_push.len());
-    
+
+    info!(
+        "mbsync sync: pulling {} files, pushing {} files",
+        files_to_pull.len(),
+        files_to_push.len()
+    );
+
     // Send pull list and exchange files (simplified for now)
     let pull_data = serde_json::to_vec(&files_to_pull)?;
     write_data(&pull_data, to_stream).await?;
-    
+
     // TODO: Implement actual file exchange with proper timestamps
     info!("mbsync file sync completed (basic implementation)");
-    
+
     Ok(())
 }
 
@@ -1066,18 +1217,18 @@ async fn sync_mbsync_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 ) -> Result<()> {
     // Get local mbsync file stats
     let local_stats = get_mbsync_stats(prefix)?;
-    
+
     // Send stats to local
     let stats_data = serde_json::to_vec(&local_stats)?;
     write_data(&stats_data, to_stream).await?;
-    
+
     // Receive pull request from local
     let pull_data = read_data(from_stream).await?;
     let _files_to_send: Vec<String> = serde_json::from_slice(&pull_data)?;
-    
+
     // TODO: Implement actual file sending with proper timestamps
     info!("mbsync remote sync completed (basic implementation)");
-    
+
     Ok(())
 }
 
@@ -1085,13 +1236,13 @@ async fn sync_mbsync_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 fn get_mbsync_stats(prefix: &str) -> Result<HashMap<String, f64>> {
     let mut stats = HashMap::new();
     let patterns = [".uidvalidity", ".mbsyncstate"];
-    
+
     for pattern in &patterns {
         let pattern_path = format!("{}/**/{}", prefix, pattern);
         // TODO: Implement proper glob pattern matching
         // For now, return empty stats
     }
-    
+
     info!("Found {} mbsync files", stats.len());
     Ok(stats)
 }
