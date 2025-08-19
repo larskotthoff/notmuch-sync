@@ -22,10 +22,10 @@ static TRANSFER_READ: AtomicUsize = AtomicUsize::new(0);
 static TRANSFER_WRITE: AtomicUsize = AtomicUsize::new(0);
 
 /// Command line arguments
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "notmuch-sync")]
 #[command(about = "Synchronize notmuch email databases and message files between local and remote systems")]
-struct Args {
+pub struct Args {
     /// Remote host to connect to
     #[arg(short, long)]
     remote: Option<String>,

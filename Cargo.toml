@@ -13,6 +13,10 @@ repository = "https://github.com/larskotthoff/notmuch-sync"
 name = "notmuch-sync"
 path = "src/notmuch_sync.rs"
 
+[lib]
+name = "notmuch_sync"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
