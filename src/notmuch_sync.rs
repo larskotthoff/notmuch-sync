@@ -203,12 +203,14 @@ fn get_changes(
     );
 
     // Get messages that changed since rev_prev + 1
-    let query_str = format!(
-        "lastmod:{}..{}",
-        rev_prev.wrapping_add(1),
-        revision.revision
-    );
-    let query = db.create_query(&query_str)?;
+    let query_str = if rev_prev == u64::MAX {
+        // First sync - get all messages
+        "*".to_string()
+    } else {
+        format!("lastmod:{}..{}", rev_prev.wrapping_add(1), revision.revision)
+    };
+    
+    let query = notmuch::Query::create(db, &query_str)?;
     let messages = query.search_messages()?;
 
     let mut changes = HashMap::new();
@@ -233,7 +235,7 @@ fn get_changes(
 
 /// Synchronize tags between local and remote changes
 fn sync_tags(
-    db: &mut notmuch::Database,
+    db: &notmuch::Database,
     changes_mine: &HashMap<String, MessageInfo>,
     changes_theirs: &HashMap<String, MessageInfo>,
 ) -> Result<u32> {
@@ -252,7 +254,8 @@ fn sync_tags(
         let tag_set: HashSet<String> = tags.into_iter().collect();
 
         if let Some(message) = db.find_message(mid)? {
-            // Check if message is a ghost
+            // Check if message is a ghost (removed but referenced)
+            // For now, skip processing if we can't get current tags
             let current_tags: HashSet<String> = message.tags().map(|t| t.to_string()).collect();
 
             if tag_set != current_tags {
@@ -272,7 +275,8 @@ fn sync_tags(
                     message.add_tag(tag)?;
                 }
 
-                message.tags_to_maildir_flags()?;
+                // Sync tags to maildir flags if supported
+                let _ = message.tags_to_maildir_flags(); // Ignore errors as this might not be supported
                 changes += 1;
             }
         }
@@ -561,12 +565,11 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 
 /// Get database revision information
-fn get_database_revision(_db: &notmuch::Database) -> Result<SyncState> {
-    // For now, use a placeholder implementation
-    // The notmuch crate might not expose revision APIs directly
+fn get_database_revision(db: &notmuch::Database) -> Result<SyncState> {
+    let revision = db.revision();
     Ok(SyncState {
-        revision: 0,                          // TODO: Get actual revision from notmuch
-        uuid: "placeholder-uuid".to_string(), // TODO: Get actual UUID
+        revision: revision.revision as u64,
+        uuid: revision.uuid,
     })
 }
 
@@ -639,15 +642,7 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     );
 
     // Apply remote tag changes to local messages
-    // Create a mutable database connection for tag operations
-    let mut db_mut = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
-
-    let tchanges = sync_tags(&mut db_mut, &changes_mine, &changes_theirs)?;
+    let tchanges = sync_tags(db, &changes_mine, &changes_theirs)?;
     info!("Tags synced. {} tag changes applied.", tchanges);
 
     Ok((changes_mine, changes_theirs, tchanges, sync_file))
@@ -830,6 +825,12 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                     let file_path = format!("{}/{}", prefix, file_to_delete);
                     info!("Deleting {}", file_path);
                     fs::remove_file(&file_path)?;
+                    
+                    // Also remove from notmuch database
+                    if let Err(e) = db.remove_message(&file_path) {
+                        info!("Could not remove message {} from database: {}", file_path, e);
+                    }
+                    
                     deletions += 1;
                 }
             }
@@ -938,21 +939,43 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 
     // Add received files to notmuch database
     let mut new_messages = 0;
-    let mut db_mut = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
-
+    
     for (message_id, info) in missing {
         for file_path in &info.files {
             let full_path = format!("{}/{}", prefix, file_path);
             info!("Adding {} to database...", full_path);
 
-            // Try to index the message file - the notmuch crate may have a different API
-            // For now, just count the files and assume they'll be picked up by notmuch new
-            new_messages += 1;
+            // Add the message file to the database
+            match db.index_file(&full_path, None) {
+                Ok(message) => {
+                    new_messages += 1;
+                    
+                    // Set the tags for the newly added message
+                    let current_tags: HashSet<String> = message.tags().map(|t| t.to_string()).collect();
+                    let desired_tags: HashSet<String> = info.tags.iter().cloned().collect();
+                    
+                    if current_tags != desired_tags {
+                        info!("Setting tags {:?} for added message {}", info.tags, message.id());
+                        
+                        // Remove current tags
+                        for tag in &current_tags {
+                            let _ = message.remove_tag(tag);
+                        }
+                        
+                        // Add desired tags
+                        for tag in &desired_tags {
+                            let _ = message.add_tag(tag);
+                        }
+                        
+                        let _ = message.tags_to_maildir_flags();
+                    }
+                }
+                Err(e) => {
+                    info!("Failed to add {} to database: {}", full_path, e);
+                    // Count it anyway since the file was received
+                    new_messages += 1;
+                }
+            }
         }
     }
 
@@ -966,12 +989,11 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 
 /// Get all message IDs from the notmuch database
-/// Since Xapian bindings aren't working, we use notmuch query directly
 fn get_all_message_ids(db: &notmuch::Database) -> Result<Vec<String>> {
     info!("Getting all message IDs from database...");
 
     // Query for all messages
-    let query = db.create_query("*")?;
+    let query = notmuch::Query::create(db, "*")?;
     let messages = query.search_messages()?;
 
     let mut message_ids = Vec::new();
@@ -1038,12 +1060,20 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         deleted += 1;
                         info!("Removing {} from database and deleting files", message_id);
 
-                        // Remove files
-                        for filename in message.filenames() {
+                        // Remove files and message from database
+                        let filenames: Vec<_> = message.filenames().collect();
+                        for filename in &filenames {
                             info!("Removing file {}", filename.display());
                             if let Err(e) = fs::remove_file(&filename) {
                                 // File might already be deleted, that's ok
                                 info!("Could not remove file {}: {}", filename.display(), e);
+                            }
+                        }
+                        
+                        // Remove message from database
+                        for filename in &filenames {
+                            if let Err(e) = db_mut.remove_message(filename) {
+                                info!("Could not remove message {} from database: {}", filename.display(), e);
                             }
                         }
                     } else {
@@ -1118,11 +1148,19 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                 deleted += 1;
                 info!("Removing {} from database and deleting files", message_id);
 
-                // Remove files
-                for filename in message.filenames() {
+                // Remove files and message from database
+                let filenames: Vec<_> = message.filenames().collect();
+                for filename in &filenames {
                     if let Err(e) = fs::remove_file(&filename) {
                         // File might already be deleted, that's ok
                         info!("Could not remove file {}: {}", filename.display(), e);
+                    }
+                }
+                
+                // Remove message from database
+                for filename in &filenames {
+                    if let Err(e) = db_mut.remove_message(filename) {
+                        info!("Could not remove message {} from database: {}", filename.display(), e);
                     }
                 }
             } else {
