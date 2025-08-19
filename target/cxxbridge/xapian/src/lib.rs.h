@@ -1,0 +1,1 @@
+../../../debug/build/xapian-cec52fc89acf0cd1/out/cxxbridge/include/xapian/src/lib.rs.h

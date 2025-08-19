@@ -1,0 +1,28 @@
+[package]
+name = "notmuch-sync"
+version = "0.0.3"
+edition = "2021"
+description = "Synchronize notmuch email databases and message files between local and remote systems, compatible with mbsync."
+authors = ["Lars Kotthoff <lars@larsko.org>"]
+license = "BSD-3-Clause"
+readme = "README.md"
+homepage = "https://github.com/larskotthoff/notmuch-sync"
+repository = "https://github.com/larskotthoff/notmuch-sync"
+
+[[bin]]
+name = "notmuch-sync"
+path = "src/notmuch_sync.rs"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+log = "0.4"
+env_logger = "0.10"
+anyhow = "1.0"
+notmuch = "0.8"
+# Using libc and std::process for direct xapian access via Python subprocess as fallback
+libc = "0.2"
+shellexpand = "3.0"
