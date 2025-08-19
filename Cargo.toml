@@ -30,3 +30,4 @@ notmuch = "0.8"
 # Using libc and std::process for direct xapian access via Python subprocess as fallback
 libc = "0.2"
 shellexpand = "3.0"
+glob = "0.3"

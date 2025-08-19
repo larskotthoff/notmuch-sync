@@ -16,8 +16,14 @@ jobs:
     
     - run: sudo apt-get install -y notmuch libnotmuch-dev python3-notmuch2 python3-xapian wget ssh expect
 
-    - name: Install Python script  
-      run: sudo cp $GITHUB_WORKSPACE/src/notmuch_sync.py /usr/bin/notmuch-sync
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Build Rust binary
+      run: cargo build --release
+    
+    - name: Install Rust binary
+      run: sudo cp target/release/notmuch-sync /usr/bin/notmuch-sync
 
     - run: |
         echo -e "[database]\npath=$GITHUB_WORKSPACE/notmuch-list\nhook_dir=$GITHUB_WORKSPACE/.notmuch\n\n[user]\nname=test\nprimary_email=test@test.com\n\n[new]\ntags=unread;\nignore=\n\n[search]\nexclude_tags=deleted" > ~/.notmuch-config

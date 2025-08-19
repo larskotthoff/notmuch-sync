@@ -25,8 +25,14 @@ jobs:
           notmuch \
           afew libnotmuch-dev python3-notmuch2 python3-xapian ssh wget
     
-    - name: Install Python script
-      run: sudo cp $GITHUB_WORKSPACE/src/notmuch_sync.py /usr/bin/notmuch-sync
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Build Rust binary
+      run: cargo build --release
+    
+    - name: Install Rust binary
+      run: sudo cp target/release/notmuch-sync /usr/bin/notmuch-sync
     
     - name: Setup Dovecot IMAP server
       run: |
