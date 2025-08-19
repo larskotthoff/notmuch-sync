@@ -573,7 +573,7 @@ fn get_database_revision(db: &notmuch::Database) -> Result<SyncState> {
     })
 }
 
-/// Placeholder implementations for missing functions
+/// Perform initial sync with sequential protocol to avoid deadlocks
 async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     db: &notmuch::Database,
     prefix: &str,
@@ -587,27 +587,20 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 )> {
     let revision = get_database_revision(db)?;
 
-    // Exchange UUIDs
+    // Exchange UUIDs - use sequential protocol to avoid deadlocks
     let my_uuid = revision.uuid.clone();
+    
+    info!("Sending UUID {}...", my_uuid);
     let uuid_bytes = my_uuid.as_bytes();
-
-    // Send and receive UUIDs concurrently
-    let ((), their_uuid_bytes) = run_async(
-        async {
-            to_stream.write_all(uuid_bytes).await?;
-            TRANSFER_WRITE.fetch_add(uuid_bytes.len(), Ordering::Relaxed);
-            to_stream.flush().await?;
-            Ok(())
-        },
-        async {
-            let mut buf = vec![0u8; 36]; // UUID length
-            from_stream.read_exact(&mut buf).await?;
-            TRANSFER_READ.fetch_add(36, Ordering::Relaxed);
-            Ok(buf)
-        },
-    )
-    .await?;
-
+    to_stream.write_all(uuid_bytes).await?;
+    TRANSFER_WRITE.fetch_add(uuid_bytes.len(), Ordering::Relaxed);
+    to_stream.flush().await?;
+    
+    info!("Receiving UUID...");
+    let mut their_uuid_bytes = vec![0u8; 36]; // UUID length
+    from_stream.read_exact(&mut their_uuid_bytes).await?;
+    TRANSFER_READ.fetch_add(36, Ordering::Relaxed);
+    
     let their_uuid = String::from_utf8(their_uuid_bytes)?;
     info!("UUIDs synced. Local: {}, Remote: {}", my_uuid, their_uuid);
 
@@ -618,22 +611,14 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     info!("Computing local changes...");
     let changes_mine = get_changes(db, &revision, prefix, &sync_file)?;
 
-    // Exchange changes
-    let ((), changes_theirs) = run_async(
-        async {
-            info!("Sending local changes...");
-            let changes_json = serde_json::to_vec(&changes_mine)?;
-            write_data(&changes_json, to_stream).await?;
-            Ok(())
-        },
-        async {
-            info!("Receiving remote changes...");
-            let changes_data = read_data(from_stream).await?;
-            let changes: HashMap<String, MessageInfo> = serde_json::from_slice(&changes_data)?;
-            Ok(changes)
-        },
-    )
-    .await?;
+    // Exchange changes - sequential protocol
+    info!("Sending local changes...");
+    let changes_json = serde_json::to_vec(&changes_mine)?;
+    write_data(&changes_json, to_stream).await?;
+    
+    info!("Receiving remote changes...");
+    let changes_data = read_data(from_stream).await?;
+    let changes_theirs: HashMap<String, MessageInfo> = serde_json::from_slice(&changes_data)?;
 
     info!(
         "Changes synced. Local: {}, Remote: {}",
@@ -688,49 +673,33 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         }
     }
 
-    // Exchange hash requests
-    let ((), remote_hash_requests) = run_async(
-        async {
-            info!("Requesting {} hashes from remote...", hash_requests.len());
-            let request_data = serde_json::to_vec(&hash_requests)?;
-            write_data(&request_data, to_stream).await?;
-            Ok(())
-        },
-        async {
-            info!("Receiving hash requests from remote...");
-            let request_data = read_data(from_stream).await?;
-            let requests: Vec<String> = serde_json::from_slice(&request_data)?;
-            Ok(requests)
-        },
-    )
-    .await?;
+    // Exchange hash requests - sequential to avoid deadlocks
+    info!("Sending {} hash requests to remote...", hash_requests.len());
+    let request_data = serde_json::to_vec(&hash_requests)?;
+    write_data(&request_data, to_stream).await?;
+    
+    info!("Receiving hash requests from remote...");
+    let remote_request_data = read_data(from_stream).await?;
+    let remote_hash_requests: Vec<String> = serde_json::from_slice(&remote_request_data)?;
 
-    // Compute and exchange hashes
-    let ((), remote_hashes) = run_async(
-        async {
-            info!(
-                "Computing and sending {} file hashes...",
-                remote_hash_requests.len()
-            );
-            let mut hashes = Vec::new();
-            for file_path in &remote_hash_requests {
-                let full_path = format!("{}/{}", prefix, file_path);
-                let file_data = fs::read(&full_path)?;
-                let hash = digest(&file_data);
-                hashes.push(hash);
-            }
-            let hash_data = serde_json::to_vec(&hashes)?;
-            write_data(&hash_data, to_stream).await?;
-            Ok(())
-        },
-        async {
-            info!("Receiving hashes from remote...");
-            let hash_data = read_data(from_stream).await?;
-            let hashes: Vec<String> = serde_json::from_slice(&hash_data)?;
-            Ok(hashes)
-        },
-    )
-    .await?;
+    // Compute and exchange hashes - sequential
+    info!(
+        "Computing and sending {} file hashes...",
+        remote_hash_requests.len()
+    );
+    let mut hashes = Vec::new();
+    for file_path in &remote_hash_requests {
+        let full_path = format!("{}/{}", prefix, file_path);
+        let file_data = fs::read(&full_path)?;
+        let hash = digest(&file_data);
+        hashes.push(hash);
+    }
+    let hash_data = serde_json::to_vec(&hashes)?;
+    write_data(&hash_data, to_stream).await?;
+    
+    info!("Receiving hashes from remote...");
+    let remote_hash_data = read_data(from_stream).await?;
+    let remote_hashes: Vec<String> = serde_json::from_slice(&remote_hash_data)?;
 
     // Build hash map for comparison
     let remote_hash_map: HashMap<String, String> = hash_requests
@@ -854,25 +823,17 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         .cloned()
         .collect();
 
-    // Exchange file lists
-    let ((), files_to_send) = run_async(
-        async {
-            info!(
-                "Sending list of {} files needed from remote...",
-                files_needed.len()
-            );
-            let file_list_data = serde_json::to_vec(&files_needed)?;
-            write_data(&file_list_data, to_stream).await?;
-            Ok(())
-        },
-        async {
-            info!("Receiving list of files to send to remote...");
-            let file_list_data = read_data(from_stream).await?;
-            let files: Vec<String> = serde_json::from_slice(&file_list_data)?;
-            Ok(files)
-        },
-    )
-    .await?;
+    // Exchange file lists - sequential
+    info!(
+        "Sending list of {} files needed from remote...",
+        files_needed.len()
+    );
+    let file_list_data = serde_json::to_vec(&files_needed)?;
+    write_data(&file_list_data, to_stream).await?;
+    
+    info!("Receiving list of files to send to remote...");
+    let remote_file_list_data = read_data(from_stream).await?;
+    let files_to_send: Vec<String> = serde_json::from_slice(&remote_file_list_data)?;
 
     info!(
         "File lists exchanged. Need {} files, sending {} files",
@@ -880,62 +841,53 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         files_to_send.len()
     );
 
-    // Exchange files concurrently
-    let ((), ()) = run_async(
-        async {
-            // Send files to remote
-            for (idx, file_path) in files_to_send.iter().enumerate() {
-                info!(
-                    "{}/{} Sending {} to remote...",
-                    idx + 1,
-                    files_to_send.len(),
-                    file_path
-                );
-                let full_path = format!("{}/{}", prefix, file_path);
-                let file_data = fs::read(&full_path)?;
-                write_data(&file_data, to_stream).await?;
+    // Send files to remote first
+    for (idx, file_path) in files_to_send.iter().enumerate() {
+        info!(
+            "{}/{} Sending {} to remote...",
+            idx + 1,
+            files_to_send.len(),
+            file_path
+        );
+        let full_path = format!("{}/{}", prefix, file_path);
+        let file_data = fs::read(&full_path)?;
+        write_data(&file_data, to_stream).await?;
+    }
+    
+    // Then receive files from remote
+    for (idx, file_path) in files_needed.iter().enumerate() {
+        info!(
+            "{}/{} Receiving {} from remote...",
+            idx + 1,
+            files_needed.len(),
+            file_path
+        );
+        let file_data = read_data(from_stream).await?;
+
+        let full_path = format!("{}/{}", prefix, file_path);
+
+        // Check if file already exists and has different content
+        if Path::new(&full_path).exists() {
+            let existing_data = fs::read(&full_path)?;
+            let existing_hash = digest(&existing_data);
+            let new_hash = digest(&file_data);
+
+            if existing_hash != new_hash {
+                return Err(anyhow!(
+                    "File {} already exists with different content!",
+                    full_path
+                ));
             }
-            Ok(())
-        },
-        async {
-            // Receive files from remote
-            for (idx, file_path) in files_needed.iter().enumerate() {
-                info!(
-                    "{}/{} Receiving {} from remote...",
-                    idx + 1,
-                    files_needed.len(),
-                    file_path
-                );
-                let file_data = read_data(from_stream).await?;
+        }
 
-                let full_path = format!("{}/{}", prefix, file_path);
+        // Create parent directories
+        if let Some(parent) = Path::new(&full_path).parent() {
+            fs::create_dir_all(parent)?;
+        }
 
-                // Check if file already exists and has different content
-                if Path::new(&full_path).exists() {
-                    let existing_data = fs::read(&full_path)?;
-                    let existing_hash = digest(&existing_data);
-                    let new_hash = digest(&file_data);
-
-                    if existing_hash != new_hash {
-                        return Err(anyhow!(
-                            "File {} already exists with different content!",
-                            full_path
-                        ));
-                    }
-                }
-
-                // Create parent directories
-                if let Some(parent) = Path::new(&full_path).parent() {
-                    fs::create_dir_all(parent)?;
-                }
-
-                // Write file
-                fs::write(&full_path, &file_data)?;
-            }
-            Ok(())
-        },
-    )
-    .await?;
+        // Write file
+        fs::write(&full_path, &file_data)?;
+    }
 
     // Add received files to notmuch database
     let mut new_messages = 0;
@@ -1018,14 +970,12 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         None,
     )?;
 
-    // Get local and remote message IDs concurrently
-    let (local_ids, remote_ids) = run_async(async { get_all_message_ids(&db) }, async {
-        info!("Receiving all message IDs from remote...");
-        let id_data = read_data(from_stream).await?;
-        let ids: Vec<String> = serde_json::from_slice(&id_data)?;
-        Ok(ids)
-    })
-    .await?;
+    // Get local and remote message IDs - sequential
+    let local_ids = get_all_message_ids(&db)?;
+    
+    info!("Receiving all message IDs from remote...");
+    let id_data = read_data(from_stream).await?;
+    let remote_ids: Vec<String> = serde_json::from_slice(&id_data)?;
 
     info!(
         "Message IDs synced. Local: {}, Remote: {}",
@@ -1040,74 +990,66 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let to_delete_locally: Vec<String> = remote_set.difference(&local_set).cloned().collect();
     let to_delete_remotely: Vec<String> = local_set.difference(&remote_set).cloned().collect();
 
-    // Send deletion list to remote and delete locally
-    let (deletions, ()) = run_async(
-        async {
-            // Delete messages locally
-            let mut deleted = 0;
-            let db_mut = notmuch::Database::open_with_config(
-                None::<&Path>,
-                notmuch::DatabaseMode::ReadWrite,
-                None::<&Path>,
-                None,
-            )?;
+    // Send deletion list to remote first
+    info!(
+        "Sending {} message IDs to be deleted to remote...",
+        to_delete_remotely.len()
+    );
+    let delete_data = serde_json::to_vec(&to_delete_remotely)?;
+    write_data(&delete_data, to_stream).await?;
+    
+    // Then delete messages locally
+    let mut deleted = 0;
+    let db_mut = notmuch::Database::open_with_config(
+        None::<&Path>,
+        notmuch::DatabaseMode::ReadWrite,
+        None::<&Path>,
+        None,
+    )?;
 
-            for message_id in &to_delete_locally {
-                if let Some(message) = db_mut.find_message(message_id)? {
-                    let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
+    for message_id in &to_delete_locally {
+        if let Some(message) = db_mut.find_message(message_id)? {
+            let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
 
-                    if has_deleted_tag || no_check {
-                        deleted += 1;
-                        info!("Removing {} from database and deleting files", message_id);
+            if has_deleted_tag || no_check {
+                deleted += 1;
+                info!("Removing {} from database and deleting files", message_id);
 
-                        // Remove files and message from database
-                        let filenames: Vec<_> = message.filenames().collect();
-                        for filename in &filenames {
-                            info!("Removing file {}", filename.display());
-                            if let Err(e) = fs::remove_file(&filename) {
-                                // File might already be deleted, that's ok
-                                info!("Could not remove file {}: {}", filename.display(), e);
-                            }
-                        }
-                        
-                        // Remove message from database
-                        for filename in &filenames {
-                            if let Err(e) = db_mut.remove_message(filename) {
-                                info!("Could not remove message {} from database: {}", filename.display(), e);
-                            }
-                        }
-                    } else {
-                        info!(
-                            "{} set to be removed, but not tagged 'deleted'!",
-                            message_id
-                        );
-                        // Force a tag update to make it appear in next changeset
-                        let dummy_tag = format!(
-                            "dummy-{}",
-                            time::SystemTime::now()
-                                .duration_since(time::UNIX_EPOCH)?
-                                .as_nanos()
-                        );
-                        message.add_tag(&dummy_tag)?;
-                        message.remove_tag(&dummy_tag)?;
+                // Remove files and message from database
+                let filenames: Vec<_> = message.filenames().collect();
+                for filename in &filenames {
+                    info!("Removing file {}", filename.display());
+                    if let Err(e) = fs::remove_file(&filename) {
+                        // File might already be deleted, that's ok
+                        info!("Could not remove file {}: {}", filename.display(), e);
                     }
                 }
+                
+                // Remove message from database
+                for filename in &filenames {
+                    if let Err(e) = db_mut.remove_message(filename) {
+                        info!("Could not remove message {} from database: {}", filename.display(), e);
+                    }
+                }
+            } else {
+                info!(
+                    "{} set to be removed, but not tagged 'deleted'!",
+                    message_id
+                );
+                // Force a tag update to make it appear in next changeset
+                let dummy_tag = format!(
+                    "dummy-{}",
+                    time::SystemTime::now()
+                        .duration_since(time::UNIX_EPOCH)?
+                        .as_nanos()
+                );
+                message.add_tag(&dummy_tag)?;
+                message.remove_tag(&dummy_tag)?;
             }
-            Ok(deleted)
-        },
-        async {
-            info!(
-                "Sending {} message IDs to be deleted to remote...",
-                to_delete_remotely.len()
-            );
-            let delete_data = serde_json::to_vec(&to_delete_remotely)?;
-            write_data(&delete_data, to_stream).await?;
-            Ok(())
-        },
-    )
-    .await?;
+        }
+    }
 
-    Ok(deletions)
+    Ok(deleted)
 }
 
 async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
@@ -1193,21 +1135,14 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let local_stats = get_mbsync_stats(prefix)?;
 
     // Exchange mbsync stats
-    let ((), remote_stats) = run_async(
-        async {
-            info!("Sending local mbsync file stats...");
-            let stats_data = serde_json::to_vec(&local_stats)?;
-            write_data(&stats_data, to_stream).await?;
-            Ok(())
-        },
-        async {
-            info!("Receiving remote mbsync file stats...");
-            let stats_data = read_data(from_stream).await?;
-            let stats: HashMap<String, f64> = serde_json::from_slice(&stats_data)?;
-            Ok(stats)
-        },
-    )
-    .await?;
+    // Exchange file stats - sequential
+    info!("Sending local mbsync file stats...");
+    let stats_data = serde_json::to_vec(&local_stats)?;
+    write_data(&stats_data, to_stream).await?;
+    
+    info!("Receiving remote mbsync file stats...");
+    let remote_stats_data = read_data(from_stream).await?;
+    let remote_stats: HashMap<String, f64> = serde_json::from_slice(&remote_stats_data)?;
 
     // Determine which files to pull and push
     let mut files_to_pull = Vec::new();
@@ -1238,74 +1173,66 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         files_to_push.len()
     );
 
-    // Exchange file lists and files
-    let ((), ()) = run_async(
-        async {
-            // Send pull list to remote
-            let pull_data = serde_json::to_vec(&files_to_pull)?;
-            write_data(&pull_data, to_stream).await?;
-            
-            // Send push list to remote  
-            let push_data = serde_json::to_vec(&files_to_push)?;
-            write_data(&push_data, to_stream).await?;
-            
-            // Send files to remote
-            for file_path in &files_to_push {
-                let full_path = format!("{}/{}", prefix, file_path);
-                let mtime = local_stats.get(file_path).unwrap_or(&0.0);
-                
-                // Send mtime first
-                to_stream.write_all(&mtime.to_be_bytes()).await?;
-                
-                // Send file content
-                let file_data = fs::read(&full_path)?;
-                write_data(&file_data, to_stream).await?;
-            }
-            Ok(())
-        },
-        async {
-            // Receive files from remote
-            for file_path in &files_to_pull {
-                let full_path = format!("{}/{}", prefix, file_path);
-                
-                // Receive mtime
-                let mut mtime_bytes = [0u8; 8];
-                from_stream.read_exact(&mut mtime_bytes).await?;
-                let mtime = f64::from_be_bytes(mtime_bytes);
-                
-                // Receive file content
-                let file_data = read_data(from_stream).await?;
-                
-                // Create parent directories
-                if let Some(parent) = Path::new(&full_path).parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                
-                // Write file
-                fs::write(&full_path, &file_data)?;
-                
-                // Set file modification time
-                let mtime_secs = mtime as u64;
-                let mtime_nanos = ((mtime - mtime_secs as f64) * 1_000_000_000.0) as u32;
-                
-                // Set the file time using utime syscall equivalent
-                use libc::{utimes, timeval};
-                use std::ffi::CString;
-                
-                let path_cstr = CString::new(full_path.as_bytes())?;
-                let times = [
-                    timeval { tv_sec: mtime_secs as libc::time_t, tv_usec: (mtime_nanos / 1000) as libc::suseconds_t },
-                    timeval { tv_sec: mtime_secs as libc::time_t, tv_usec: (mtime_nanos / 1000) as libc::suseconds_t },
-                ];
-                unsafe {
-                    utimes(path_cstr.as_ptr(), times.as_ptr());
-                }
-            }
-            Ok(())
-        },
-    )
-    .await?;
-
+    // Exchange file lists and files - sequential
+    // Send pull list to remote
+    let pull_data = serde_json::to_vec(&files_to_pull)?;
+    write_data(&pull_data, to_stream).await?;
+    
+    // Send push list to remote  
+    let push_data = serde_json::to_vec(&files_to_push)?;
+    write_data(&push_data, to_stream).await?;
+    
+    // Send files to remote
+    for file_path in &files_to_push {
+        let full_path = format!("{}/{}", prefix, file_path);
+        let mtime = local_stats.get(file_path).unwrap_or(&0.0);
+        
+        // Send mtime first
+        to_stream.write_all(&mtime.to_be_bytes()).await?;
+        
+        // Send file content
+        let file_data = fs::read(&full_path)?;
+        write_data(&file_data, to_stream).await?;
+    }
+    
+    // Receive files from remote
+    for file_path in &files_to_pull {
+        let full_path = format!("{}/{}", prefix, file_path);
+        
+        // Receive mtime
+        let mut mtime_bytes = [0u8; 8];
+        from_stream.read_exact(&mut mtime_bytes).await?;
+        let mtime = f64::from_be_bytes(mtime_bytes);
+        
+        // Receive file content
+        let file_data = read_data(from_stream).await?;
+        
+        // Create parent directories
+        if let Some(parent) = Path::new(&full_path).parent() {
+            fs::create_dir_all(parent)?;
+        }
+        
+        // Write file
+        fs::write(&full_path, &file_data)?;
+        
+        // Set file modification time
+        let mtime_secs = mtime as u64;
+        let mtime_nanos = ((mtime - mtime_secs as f64) * 1_000_000_000.0) as u32;
+        
+        // Set the file time using utime syscall equivalent
+        use libc::{utimes, timeval};
+        use std::ffi::CString;
+        
+        let path_cstr = CString::new(full_path.as_bytes())?;
+        let times = [
+            timeval { tv_sec: mtime_secs as libc::time_t, tv_usec: (mtime_nanos / 1000) as libc::suseconds_t },
+            timeval { tv_sec: mtime_secs as libc::time_t, tv_usec: (mtime_nanos / 1000) as libc::suseconds_t },
+        ];
+        unsafe {
+            utimes(path_cstr.as_ptr(), times.as_ptr());
+        }
+    }
+    
     info!("mbsync file sync completed");
 
     Ok(())
