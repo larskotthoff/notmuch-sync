@@ -13,4 +13,4 @@ Cargo.lock
 Thumbs.db
 
 # Test files
-*.tmp
+*.tmptarget/
