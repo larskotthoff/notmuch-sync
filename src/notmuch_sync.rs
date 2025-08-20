@@ -1107,8 +1107,8 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let local_set: HashSet<String> = local_ids.into_iter().collect();
     let remote_set: HashSet<String> = remote_ids.into_iter().collect();
 
-    let to_delete_locally: Vec<String> = remote_set.difference(&local_set).cloned().collect();
-    let to_delete_remotely: Vec<String> = local_set.difference(&remote_set).cloned().collect();
+    let to_delete_locally: Vec<String> = local_set.difference(&remote_set).cloned().collect();
+    let to_delete_remotely: Vec<String> = remote_set.difference(&local_set).cloned().collect();
 
     // Send deletion list to remote first
     info!(
