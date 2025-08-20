@@ -1044,7 +1044,9 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                             let _ = message.add_tag(tag);
                         }
 
-                        let _ = message.tags_to_maildir_flags();
+                        // Note: We don't call tags_to_maildir_flags() here to avoid moving files
+                        // from new/ to cur/ directory during sync, which would break file location
+                        // consistency between local and remote sides
                     }
                 }
                 Err(e) => {
