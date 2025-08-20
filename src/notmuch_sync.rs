@@ -1144,8 +1144,7 @@ async fn sync_mbsync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     // Get local mbsync file stats
     let local_stats = get_mbsync_stats(prefix)?;
 
-    // Exchange mbsync stats
-    // Exchange file stats - sequential
+    // Exchange mbsync stats - sequential protocol (local sends first, remote receives first)
     info!("Sending local mbsync file stats...");
     let stats_data = serde_json::to_vec(&local_stats)?;
     write_data(&stats_data, to_stream).await?;
@@ -1262,7 +1261,12 @@ async fn sync_mbsync_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     // Get local mbsync file stats
     let local_stats = get_mbsync_stats(prefix)?;
 
-    // Send stats to local
+    // Exchange mbsync stats - sequential protocol (remote receives first, then sends)
+    info!("Receiving local mbsync file stats...");
+    let local_stats_data = read_data(from_stream).await?;
+    let remote_local_stats: HashMap<String, f64> = serde_json::from_slice(&local_stats_data)?;
+
+    info!("Sending remote mbsync file stats...");
     let stats_data = serde_json::to_vec(&local_stats)?;
     write_data(&stats_data, to_stream).await?;
 
