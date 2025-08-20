@@ -429,59 +429,96 @@ async fn sync_local_with_streams(
     )?;
     let prefix = db.path().to_string_lossy().to_string();
 
-    // Perform initial sync
-    let (changes_mine, changes_theirs, tchanges, sync_fname) =
-        initial_sync_local(&db, &prefix, &mut from_remote, &mut to_remote).await?;
+    // Variables to track sync results
+    let mut tchanges = 0;
+    let mut fchanges = 0;
+    let mut dfchanges = 0;
+    let mut rmessages = 0;
+    let mut rfiles = 0;
+    let mut dchanges = 0;
+    let mut sync_fname = String::new();
 
-    info!(
-        "Initial sync completed. Local changes: {}, Remote changes: {}, Tag changes: {}",
-        changes_mine.len(),
-        changes_theirs.len(),
-        tchanges
-    );
+    // Perform sync operations with error handling
+    let sync_result = async {
+        // Perform initial sync
+        let (changes_mine, changes_theirs, tc, sf) =
+            initial_sync_local(&db, &prefix, &mut from_remote, &mut to_remote).await?;
+        tchanges = tc;
+        sync_fname = sf;
 
-    // Get missing files and sync them
-    let (missing, fchanges, dfchanges) = get_missing_files(
-        &db,
-        &prefix,
-        &changes_mine,
-        &changes_theirs,
-        &mut from_remote,
-        &mut to_remote,
-        true,
-    )
-    .await?;
+        info!(
+            "Initial sync completed. Local changes: {}, Remote changes: {}, Tag changes: {}",
+            changes_mine.len(),
+            changes_theirs.len(),
+            tchanges
+        );
 
-    let (rmessages, rfiles) =
-        sync_files(&db, &prefix, &missing, &mut from_remote, &mut to_remote).await?;
+        // Get missing files and sync them
+        let (missing, fc, dfc) = get_missing_files(
+            &db,
+            &prefix,
+            &changes_mine,
+            &changes_theirs,
+            &mut from_remote,
+            &mut to_remote,
+            true,
+        )
+        .await?;
+        fchanges = fc;
+        dfchanges = dfc;
 
-    // Record the sync
-    let revision = get_database_revision(&db)?;
-    record_sync(&sync_fname, &revision)?;
+        let (rm, rf) =
+            sync_files(&db, &prefix, &missing, &mut from_remote, &mut to_remote).await?;
+        rmessages = rm;
+        rfiles = rf;
 
-    // Handle deletions if requested
-    let dchanges = if delete {
-        sync_deletes_local(&prefix, &mut from_remote, &mut to_remote, delete_no_check).await?
-    } else {
-        0
+        // Record the sync
+        let revision = get_database_revision(&db)?;
+        record_sync(&sync_fname, &revision)?;
+
+        // Handle deletions if requested
+        if delete {
+            dchanges = sync_deletes_local(&db, &prefix, &mut from_remote, &mut to_remote, delete_no_check).await?;
+        }
+
+        // Handle mbsync if requested
+        if mbsync {
+            sync_mbsync_local(&prefix, &mut from_remote, &mut to_remote).await?;
+        }
+
+        Ok::<(), anyhow::Error>(())
+    }.await;
+
+    // Always try to read remote stats, even if there was an error
+    // This prevents deadlocks where the remote side is waiting to send stats
+    let remote_stats = match tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        async {
+            let mut stats_buf = [0u8; 24]; // 6 * 4 bytes
+            from_remote.read_exact(&mut stats_buf).await?;
+            Ok::<[u32; 6], anyhow::Error>([
+                u32::from_be_bytes([stats_buf[0], stats_buf[1], stats_buf[2], stats_buf[3]]),
+                u32::from_be_bytes([stats_buf[4], stats_buf[5], stats_buf[6], stats_buf[7]]),
+                u32::from_be_bytes([stats_buf[8], stats_buf[9], stats_buf[10], stats_buf[11]]),
+                u32::from_be_bytes([stats_buf[12], stats_buf[13], stats_buf[14], stats_buf[15]]),
+                u32::from_be_bytes([stats_buf[16], stats_buf[17], stats_buf[18], stats_buf[19]]),
+                u32::from_be_bytes([stats_buf[20], stats_buf[21], stats_buf[22], stats_buf[23]]),
+            ])
+        }
+    ).await {
+        Ok(Ok(stats)) => stats,
+        Ok(Err(e)) => {
+            info!("Error reading remote stats: {}", e);
+            [0, 0, 0, 0, 0, 0]
+        }
+        Err(_) => {
+            info!("Timeout reading remote stats - remote may have crashed");
+            [0, 0, 0, 0, 0, 0]
+        }
     };
 
-    // Handle mbsync if requested
-    if mbsync {
-        sync_mbsync_local(&prefix, &mut from_remote, &mut to_remote).await?;
-    }
-
-    // Read remote stats
-    let mut stats_buf = [0u8; 24]; // 6 * 4 bytes
-    from_remote.read_exact(&mut stats_buf).await?;
-    let remote_stats = [
-        u32::from_be_bytes([stats_buf[0], stats_buf[1], stats_buf[2], stats_buf[3]]),
-        u32::from_be_bytes([stats_buf[4], stats_buf[5], stats_buf[6], stats_buf[7]]),
-        u32::from_be_bytes([stats_buf[8], stats_buf[9], stats_buf[10], stats_buf[11]]),
-        u32::from_be_bytes([stats_buf[12], stats_buf[13], stats_buf[14], stats_buf[15]]),
-        u32::from_be_bytes([stats_buf[16], stats_buf[17], stats_buf[18], stats_buf[19]]),
-        u32::from_be_bytes([stats_buf[20], stats_buf[21], stats_buf[22], stats_buf[23]]),
-    ];
+    // Now check if the main sync had an error
+    sync_result?;
 
     info!("local:  {} new messages,\t{} new files,\t{} files copied/moved,\t{} files deleted,\t{} messages with tag changes,\t{} messages deleted", 
           rmessages, rfiles, fchanges, dfchanges, tchanges, dchanges);
@@ -513,47 +550,72 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     )?;
     let prefix = db.path().to_string_lossy().to_string();
 
-    // Perform initial sync
-    let (changes_mine, changes_theirs, tchanges, sync_fname) =
-        initial_sync_remote(&db, &prefix, &mut from_local, &mut to_local).await?;
+    // Variables to track sync results
+    let mut tchanges = 0;
+    let mut fchanges = 0;
+    let mut dfchanges = 0;
+    let mut rmessages = 0;
+    let mut rfiles = 0;
+    let mut dchanges = 0;
+    let mut sync_fname = String::new();
 
-    // Get missing files and sync them
-    let (missing, fchanges, dfchanges) = get_missing_files(
-        &db,
-        &prefix,
-        &changes_mine,
-        &changes_theirs,
-        &mut from_local,
-        &mut to_local,
-        false,
-    )
-    .await?;
+    // Perform sync operations with error handling
+    let sync_result = async {
+        // Perform initial sync
+        let (changes_mine, changes_theirs, tc, sf) =
+            initial_sync_remote(&db, &prefix, &mut from_local, &mut to_local).await?;
+        tchanges = tc;
+        sync_fname = sf;
 
-    let (rmessages, rfiles) =
-        sync_files(&db, &prefix, &missing, &mut from_local, &mut to_local).await?;
+        // Get missing files and sync them
+        let (missing, fc, dfc) = get_missing_files(
+            &db,
+            &prefix,
+            &changes_mine,
+            &changes_theirs,
+            &mut from_local,
+            &mut to_local,
+            false,
+        )
+        .await?;
+        fchanges = fc;
+        dfchanges = dfc;
 
-    // Record the sync
-    let revision = get_database_revision(&db)?;
-    record_sync(&sync_fname, &revision)?;
+        let (rm, rf) =
+            sync_files(&db, &prefix, &missing, &mut from_local, &mut to_local).await?;
+        rmessages = rm;
+        rfiles = rf;
 
-    // Handle deletions if requested
-    let dchanges = if delete {
-        sync_deletes_remote(&prefix, &mut from_local, &mut to_local, delete_no_check).await?
-    } else {
-        0
-    };
+        // Record the sync
+        let revision = get_database_revision(&db)?;
+        record_sync(&sync_fname, &revision)?;
 
-    // Handle mbsync if requested
-    if mbsync {
-        sync_mbsync_remote(&prefix, &mut from_local, &mut to_local).await?;
-    }
+        // Handle deletions if requested
+        if delete {
+            dchanges = sync_deletes_remote(&db, &prefix, &mut from_local, &mut to_local, delete_no_check).await?;
+        }
 
-    // Send stats to local
+        // Handle mbsync if requested
+        if mbsync {
+            sync_mbsync_remote(&prefix, &mut from_local, &mut to_local).await?;
+        }
+
+        Ok::<(), anyhow::Error>(())
+    }.await;
+
+    // Always send stats to local, even if there was an error
+    // This prevents deadlocks where the local side is waiting for stats
     let stats = [tchanges, fchanges, dfchanges, rmessages, dchanges, rfiles];
     for stat in stats {
-        to_local.write_all(&stat.to_be_bytes()).await?;
+        if let Err(e) = to_local.write_all(&stat.to_be_bytes()).await {
+            info!("Error sending stats to local: {}", e);
+            break;
+        }
     }
-    to_local.flush().await?;
+    let _ = to_local.flush().await;
+
+    // Now check if the main sync had an error
+    sync_result?;
 
     Ok(())
 }
@@ -1021,20 +1083,15 @@ fn get_all_message_ids(db: &notmuch::Database) -> Result<Vec<String>> {
 }
 
 async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &notmuch::Database,
     _prefix: &str,
     from_stream: &mut R,
     to_stream: &mut W,
     no_check: bool,
 ) -> Result<u32> {
-    let db = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
 
     // Get local and remote message IDs - sequential
-    let local_ids = get_all_message_ids(&db)?;
+    let local_ids = get_all_message_ids(db)?;
 
     info!("Receiving all message IDs from remote...");
     let id_data = read_data(from_stream).await?;
@@ -1063,15 +1120,9 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 
     // Then delete messages locally
     let mut deleted = 0;
-    let db_mut = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
 
     for message_id in &to_delete_locally {
-        if let Some(message) = db_mut.find_message(message_id)? {
+        if let Some(message) = db.find_message(message_id)? {
             let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
 
             if has_deleted_tag || no_check {
@@ -1090,7 +1141,7 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 
                 // Remove message from database
                 for filename in &filenames {
-                    if let Err(e) = db_mut.remove_message(filename) {
+                    if let Err(e) = db.remove_message(filename) {
                         info!(
                             "Could not remove message {} from database: {}",
                             filename.display(),
@@ -1120,20 +1171,15 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 }
 
 async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &notmuch::Database,
     _prefix: &str,
     from_stream: &mut R,
     to_stream: &mut W,
     no_check: bool,
 ) -> Result<u32> {
-    let db = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
 
     // Send our message IDs to local
-    let local_ids = get_all_message_ids(&db)?;
+    let local_ids = get_all_message_ids(db)?;
     let id_data = serde_json::to_vec(&local_ids)?;
     write_data(&id_data, to_stream).await?;
 
@@ -1142,15 +1188,9 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let to_delete: Vec<String> = serde_json::from_slice(&delete_data)?;
 
     let mut deleted = 0;
-    let db_mut = notmuch::Database::open_with_config(
-        None::<&Path>,
-        notmuch::DatabaseMode::ReadWrite,
-        None::<&Path>,
-        None,
-    )?;
 
     for message_id in &to_delete {
-        if let Some(message) = db_mut.find_message(message_id)? {
+        if let Some(message) = db.find_message(message_id)? {
             let has_deleted_tag = message.tags().any(|tag| tag == "deleted");
 
             if has_deleted_tag || no_check {
@@ -1168,7 +1208,7 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 
                 // Remove message from database
                 for filename in &filenames {
-                    if let Err(e) = db_mut.remove_message(filename) {
+                    if let Err(e) = db.remove_message(filename) {
                         info!(
                             "Could not remove message {} from database: {}",
                             filename.display(),
