@@ -431,7 +431,7 @@ async fn sync_local_with_streams(
 
     // Perform initial sync
     let (changes_mine, changes_theirs, tchanges, sync_fname) =
-        initial_sync(&db, &prefix, &mut from_remote, &mut to_remote).await?;
+        initial_sync_local(&db, &prefix, &mut from_remote, &mut to_remote).await?;
 
     info!(
         "Initial sync completed. Local changes: {}, Remote changes: {}, Tag changes: {}",
@@ -515,7 +515,7 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 
     // Perform initial sync
     let (changes_mine, changes_theirs, tchanges, sync_fname) =
-        initial_sync(&db, &prefix, &mut from_local, &mut to_local).await?;
+        initial_sync_remote(&db, &prefix, &mut from_local, &mut to_local).await?;
 
     // Get missing files and sync them
     let (missing, fchanges, dfchanges) = get_missing_files(
@@ -567,8 +567,8 @@ fn get_database_revision(db: &notmuch::Database) -> Result<SyncState> {
     })
 }
 
-/// Perform initial sync with sequential protocol to avoid deadlocks
-async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+/// Perform initial sync for local side - sends first, then receives
+async fn initial_sync_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     db: &notmuch::Database,
     prefix: &str,
     from_stream: &mut R,
@@ -581,7 +581,7 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
 )> {
     let revision = get_database_revision(db)?;
 
-    // Exchange UUIDs - use sequential protocol to avoid deadlocks
+    // Exchange UUIDs - local sends first
     let my_uuid = revision.uuid.clone();
 
     info!("Sending UUID {}...", my_uuid);
@@ -605,7 +605,7 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     info!("Computing local changes...");
     let changes_mine = get_changes(db, &revision, prefix, &sync_file)?;
 
-    // Exchange changes - sequential protocol
+    // Exchange changes - local sends first
     info!("Sending local changes...");
     let changes_json = serde_json::to_vec(&changes_mine)?;
     write_data(&changes_json, to_stream).await?;
@@ -613,6 +613,67 @@ async fn initial_sync<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     info!("Receiving remote changes...");
     let changes_data = read_data(from_stream).await?;
     let changes_theirs: HashMap<String, MessageInfo> = serde_json::from_slice(&changes_data)?;
+
+    info!(
+        "Changes synced. Local: {}, Remote: {}",
+        changes_mine.len(),
+        changes_theirs.len()
+    );
+
+    // Apply remote tag changes to local messages
+    let tchanges = sync_tags(db, &changes_mine, &changes_theirs)?;
+    info!("Tags synced. {} tag changes applied.", tchanges);
+
+    Ok((changes_mine, changes_theirs, tchanges, sync_file))
+}
+
+/// Perform initial sync for remote side - receives first, then sends
+async fn initial_sync_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &notmuch::Database,
+    prefix: &str,
+    from_stream: &mut R,
+    to_stream: &mut W,
+) -> Result<(
+    HashMap<String, MessageInfo>,
+    HashMap<String, MessageInfo>,
+    u32,
+    String,
+)> {
+    let revision = get_database_revision(db)?;
+
+    // Exchange UUIDs - remote receives first
+    let my_uuid = revision.uuid.clone();
+
+    info!("Receiving UUID...");
+    let mut their_uuid_bytes = vec![0u8; 36]; // UUID length
+    from_stream.read_exact(&mut their_uuid_bytes).await?;
+    TRANSFER_READ.fetch_add(36, Ordering::Relaxed);
+
+    let their_uuid = String::from_utf8(their_uuid_bytes)?;
+
+    info!("Sending UUID {}...", my_uuid);
+    let uuid_bytes = my_uuid.as_bytes();
+    to_stream.write_all(uuid_bytes).await?;
+    TRANSFER_WRITE.fetch_add(uuid_bytes.len(), Ordering::Relaxed);
+    to_stream.flush().await?;
+
+    info!("UUIDs synced. Local: {}, Remote: {}", my_uuid, their_uuid);
+
+    // Create sync filename
+    let sync_file = format!("{}/.notmuch/notmuch-sync-{}", prefix, their_uuid);
+
+    // Get local changes
+    info!("Computing local changes...");
+    let changes_mine = get_changes(db, &revision, prefix, &sync_file)?;
+
+    // Exchange changes - remote receives first
+    info!("Receiving remote changes...");
+    let changes_data = read_data(from_stream).await?;
+    let changes_theirs: HashMap<String, MessageInfo> = serde_json::from_slice(&changes_data)?;
+
+    info!("Sending local changes...");
+    let changes_json = serde_json::to_vec(&changes_mine)?;
+    write_data(&changes_json, to_stream).await?;
 
     info!(
         "Changes synced. Local: {}, Remote: {}",
