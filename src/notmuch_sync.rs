@@ -910,7 +910,17 @@ async fn get_missing_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                 for file_to_delete in to_delete {
                     let file_path = format!("{}/{}", prefix, file_to_delete);
                     info!("Deleting {}", file_path);
-                    fs::remove_file(&file_path)?;
+                    
+                    // Check if it's a file before trying to remove it
+                    if Path::new(&file_path).is_file() {
+                        fs::remove_file(&file_path)?;
+                    } else if Path::new(&file_path).is_dir() {
+                        info!("Skipping directory {}", file_path);
+                        continue;
+                    } else {
+                        info!("Path {} does not exist", file_path);
+                        continue;
+                    }
 
                     // Also remove from notmuch database
                     if let Err(e) = db.remove_message(&file_path) {
@@ -1092,8 +1102,12 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     no_check: bool,
 ) -> Result<u32> {
 
-    // Get local and remote message IDs - sequential
+    // Get local and remote message IDs - sequential (local sends first)
     let local_ids = get_all_message_ids(db)?;
+
+    info!("Sending all message IDs to remote...");
+    let local_data = serde_json::to_vec(&local_ids)?;
+    write_data(&local_data, to_stream).await?;
 
     info!("Receiving all message IDs from remote...");
     let id_data = read_data(from_stream).await?;
@@ -1135,9 +1149,17 @@ async fn sync_deletes_local<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                 let filenames: Vec<_> = message.filenames().collect();
                 for filename in &filenames {
                     info!("Removing file {}", filename.display());
-                    if let Err(e) = fs::remove_file(filename) {
-                        // File might already be deleted, that's ok
-                        info!("Could not remove file {}: {}", filename.display(), e);
+                    
+                    // Check if it's a file before trying to remove it
+                    if filename.is_file() {
+                        if let Err(e) = fs::remove_file(filename) {
+                            // File might already be deleted, that's ok
+                            info!("Could not remove file {}: {}", filename.display(), e);
+                        }
+                    } else if filename.is_dir() {
+                        info!("Skipping directory {}", filename.display());
+                    } else {
+                        info!("Path {} does not exist", filename.display());
                     }
                 }
 
@@ -1180,10 +1202,27 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     no_check: bool,
 ) -> Result<u32> {
 
-    // Send our message IDs to local
-    let local_ids = get_all_message_ids(db)?;
-    let id_data = serde_json::to_vec(&local_ids)?;
+    // Receive message IDs from local first, then send ours
+    info!("Receiving all message IDs from local...");
+    let local_data = read_data(from_stream).await?;
+    let local_ids: Vec<String> = serde_json::from_slice(&local_data)?;
+
+    info!("Sending all message IDs to local...");
+    let remote_ids = get_all_message_ids(db)?;
+    let id_data = serde_json::to_vec(&remote_ids)?;
     write_data(&id_data, to_stream).await?;
+
+    info!(
+        "Message IDs synced. Local: {}, Remote: {}",
+        local_ids.len(),
+        remote_ids.len()
+    );
+
+    // Determine which messages to delete on each side
+    let local_set: HashSet<String> = local_ids.into_iter().collect();
+    let remote_set: HashSet<String> = remote_ids.into_iter().collect();
+
+    let to_delete_locally: Vec<String> = remote_set.difference(&local_set).cloned().collect();
 
     // Receive deletion list from local
     let delete_data = read_data(from_stream).await?;
@@ -1202,9 +1241,18 @@ async fn sync_deletes_remote<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                 // Remove files and message from database
                 let filenames: Vec<_> = message.filenames().collect();
                 for filename in &filenames {
-                    if let Err(e) = fs::remove_file(filename) {
-                        // File might already be deleted, that's ok
-                        info!("Could not remove file {}: {}", filename.display(), e);
+                    info!("Removing file {}", filename.display());
+                    
+                    // Check if it's a file before trying to remove it
+                    if filename.is_file() {
+                        if let Err(e) = fs::remove_file(filename) {
+                            // File might already be deleted, that's ok
+                            info!("Could not remove file {}: {}", filename.display(), e);
+                        }
+                    } else if filename.is_dir() {
+                        info!("Skipping directory {}", filename.display());
+                    } else {
+                        info!("Path {} does not exist", filename.display());
                     }
                 }
 
