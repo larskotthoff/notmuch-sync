@@ -559,7 +559,7 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let mut dchanges = 0;
     let mut sync_fname = String::new();
 
-    // Perform sync operations with error handling
+    // Perform sync operations with comprehensive error handling
     let sync_result = async {
         // Perform initial sync
         let (changes_mine, changes_theirs, tc, sf) =
@@ -606,16 +606,36 @@ async fn sync_remote_with_streams<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     // Always send stats to local, even if there was an error
     // This prevents deadlocks where the local side is waiting for stats
     let stats = [tchanges, fchanges, dfchanges, rmessages, dchanges, rfiles];
-    for stat in stats {
-        if let Err(e) = to_local.write_all(&stat.to_be_bytes()).await {
+    
+    // Use a timeout to ensure we don't hang forever on stats sending
+    let stats_send_result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        async {
+            for stat in stats {
+                to_local.write_all(&stat.to_be_bytes()).await?;
+            }
+            to_local.flush().await?;
+            Ok::<(), anyhow::Error>(())
+        }
+    ).await;
+    
+    match stats_send_result {
+        Ok(Ok(())) => {
+            info!("Successfully sent stats to local");
+        }
+        Ok(Err(e)) => {
             info!("Error sending stats to local: {}", e);
-            break;
+        }
+        Err(_) => {
+            info!("Timeout sending stats to local");
         }
     }
-    let _ = to_local.flush().await;
 
     // Now check if the main sync had an error
-    sync_result?;
+    if let Err(e) = sync_result {
+        info!("Sync operation failed: {}", e);
+        return Err(e);
+    }
 
     Ok(())
 }
@@ -980,8 +1000,24 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             file_path
         );
         let full_path = format!("{}/{}", prefix, file_path);
-        let file_data = fs::read(&full_path)?;
-        write_data(&file_data, to_stream).await?;
+        
+        // Read file with error handling
+        let file_data = match fs::read(&full_path) {
+            Ok(data) => data,
+            Err(e) => return Err(anyhow!("Failed to read file {}: {}", full_path, e)),
+        };
+        
+        // Send file with timeout
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            write_data(&file_data, to_stream)
+        ).await {
+            Ok(Ok(())) => {
+                info!("Successfully sent {}", file_path);
+            }
+            Ok(Err(e)) => return Err(anyhow!("Error sending file {}: {}", file_path, e)),
+            Err(_) => return Err(anyhow!("Timeout sending file {}", file_path)),
+        }
     }
 
     // Then receive files from remote
@@ -992,7 +1028,16 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             files_needed.len(),
             file_path
         );
-        let file_data = read_data(from_stream).await?;
+        
+        // Use timeout for file reading to prevent hangs
+        let file_data = match tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            read_data(from_stream)
+        ).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(e)) => return Err(anyhow!("Error receiving file {}: {}", file_path, e)),
+            Err(_) => return Err(anyhow!("Timeout receiving file {}", file_path)),
+        };
 
         let full_path = format!("{}/{}", prefix, file_path);
 
@@ -1015,11 +1060,13 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             fs::create_dir_all(parent)?;
         }
 
-        // Write file
-        fs::write(&full_path, &file_data)?;
+        // Write file with error handling
+        if let Err(e) = fs::write(&full_path, &file_data) {
+            return Err(anyhow!("Failed to write file {}: {}", full_path, e));
+        }
     }
 
-    // Add received files to notmuch database
+    // Add received files to notmuch database with enhanced error handling
     let mut new_messages = 0;
 
     for (message_id, info) in missing {
@@ -1027,9 +1074,11 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
             let full_path = format!("{}/{}", prefix, file_path);
             info!("Adding {} to database...", full_path);
 
-            // Add the message file to the database
-            match db.index_file(&full_path, None) {
-                Ok(message) => {
+            // Add the message file to the database with comprehensive error handling
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                db.index_file(&full_path, None)
+            })) {
+                Ok(Ok(message)) => {
                     new_messages += 1;
 
                     // Set the tags for the newly added message
@@ -1059,8 +1108,13 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         // consistency between local and remote sides
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     info!("Failed to add {} to database: {}", full_path, e);
+                    // Count it anyway since the file was received
+                    new_messages += 1;
+                }
+                Err(_) => {
+                    info!("Panic occurred while adding {} to database - continuing sync", full_path);
                     // Count it anyway since the file was received
                     new_messages += 1;
                 }
