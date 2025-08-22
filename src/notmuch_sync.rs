@@ -973,17 +973,19 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         .cloned()
         .collect();
 
-    // Exchange file lists - sequential
+    // Exchange file lists concurrently (like Python run_async)
     info!(
-        "Sending list of {} files needed from remote...",
+        "Exchanging file lists. Need {} files from remote...",
         files_needed.len()
     );
+    
     let file_list_data = serde_json::to_vec(&files_needed)?;
-    write_data(&file_list_data, to_stream).await?;
-
-    info!("Receiving list of files to send to remote...");
-    let remote_file_list_data = read_data(from_stream).await?;
-    let files_to_send: Vec<String> = serde_json::from_slice(&remote_file_list_data)?;
+    let (send_result, recv_result) = tokio::try_join!(
+        write_data(&file_list_data, to_stream),
+        read_data(from_stream)
+    )?;
+    
+    let files_to_send: Vec<String> = serde_json::from_slice(&recv_result)?;
 
     info!(
         "File lists exchanged. Need {} files, sending {} files",
@@ -991,80 +993,94 @@ async fn sync_files<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         files_to_send.len()
     );
 
-    // Send files to remote first
-    for (idx, file_path) in files_to_send.iter().enumerate() {
-        info!(
-            "{}/{} Sending {} to remote...",
-            idx + 1,
-            files_to_send.len(),
-            file_path
-        );
-        let full_path = format!("{}/{}", prefix, file_path);
-        
-        // Read file with error handling
-        let file_data = match fs::read(&full_path) {
-            Ok(data) => data,
-            Err(e) => return Err(anyhow!("Failed to read file {}: {}", full_path, e)),
-        };
-        
-        // Send file with timeout
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            write_data(&file_data, to_stream)
-        ).await {
-            Ok(Ok(())) => {
-                info!("Successfully sent {}", file_path);
-            }
-            Ok(Err(e)) => return Err(anyhow!("Error sending file {}: {}", file_path, e)),
-            Err(_) => return Err(anyhow!("Timeout sending file {}", file_path)),
-        }
-    }
-
-    // Then receive files from remote
-    for (idx, file_path) in files_needed.iter().enumerate() {
-        info!(
-            "{}/{} Receiving {} from remote...",
-            idx + 1,
-            files_needed.len(),
-            file_path
-        );
-        
-        // Use timeout for file reading to prevent hangs
-        let file_data = match tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            read_data(from_stream)
-        ).await {
-            Ok(Ok(data)) => data,
-            Ok(Err(e)) => return Err(anyhow!("Error receiving file {}: {}", file_path, e)),
-            Err(_) => return Err(anyhow!("Timeout receiving file {}", file_path)),
-        };
-
-        let full_path = format!("{}/{}", prefix, file_path);
-
-        // Check if file already exists and has different content
-        if Path::new(&full_path).exists() {
-            let existing_data = fs::read(&full_path)?;
-            let existing_hash = digest(&existing_data);
-            let new_hash = digest(&file_data);
-
-            if existing_hash != new_hash {
-                return Err(anyhow!(
-                    "File {} already exists with different content!",
-                    full_path
-                ));
+    // Exchange files concurrently (like Python run_async)
+    let send_task = async {
+        for (idx, file_path) in files_to_send.iter().enumerate() {
+            info!(
+                "{}/{} Sending {} to remote...",
+                idx + 1,
+                files_to_send.len(),
+                file_path
+            );
+            let full_path = format!("{}/{}", prefix, file_path);
+            
+            // Read file with error handling
+            let file_data = match fs::read(&full_path) {
+                Ok(data) => data,
+                Err(e) => return Err(anyhow!("Failed to read file {}: {}", full_path, e)),
+            };
+            
+            // Send file with timeout
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                write_data(&file_data, to_stream)
+            ).await {
+                Ok(Ok(())) => {
+                    info!("Successfully sent {}", file_path);
+                }
+                Ok(Err(e)) => return Err(anyhow!("Error sending file {}: {}", file_path, e)),
+                Err(_) => return Err(anyhow!("Timeout sending file {}", file_path)),
             }
         }
+        Ok::<(), anyhow::Error>(())
+    };
 
-        // Create parent directories
-        if let Some(parent) = Path::new(&full_path).parent() {
-            fs::create_dir_all(parent)?;
-        }
+    let recv_task = async {
+        let mut received_files = Vec::new();
+        
+        for (idx, file_path) in files_needed.iter().enumerate() {
+            info!(
+                "{}/{} Receiving {} from remote...",
+                idx + 1,
+                files_needed.len(),
+                file_path
+            );
+            
+            // Use timeout for file reading to prevent hangs
+            let file_data = match tokio::time::timeout(
+                std::time::Duration::from_secs(60),
+                read_data(from_stream)
+            ).await {
+                Ok(Ok(data)) => data,
+                Ok(Err(e)) => return Err(anyhow!("Error receiving file {}: {}", file_path, e)),
+                Err(_) => return Err(anyhow!("Timeout receiving file {}", file_path)),
+            };
 
-        // Write file with error handling
-        if let Err(e) = fs::write(&full_path, &file_data) {
-            return Err(anyhow!("Failed to write file {}: {}", full_path, e));
+            let full_path = format!("{}/{}", prefix, file_path);
+
+            // Check if file already exists and has different content
+            if Path::new(&full_path).exists() {
+                let existing_data = fs::read(&full_path)?;
+                let existing_hash = digest(&existing_data);
+                let new_hash = digest(&file_data);
+
+                if existing_hash != new_hash {
+                    return Err(anyhow!(
+                        "File {} already exists with different content!",
+                        full_path
+                    ));
+                }
+            }
+
+            // Create parent directories
+            if let Some(parent) = Path::new(&full_path).parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Write file with error handling
+            if let Err(e) = fs::write(&full_path, &file_data) {
+                return Err(anyhow!("Failed to write file {}: {}", full_path, e));
+            }
+            
+            received_files.push((file_path.clone(), full_path));
         }
-    }
+        
+        Ok::<Vec<(String, String)>, anyhow::Error>(received_files)
+    };
+
+    // Run send and receive concurrently
+    let (send_result, recv_result) = tokio::try_join!(send_task, recv_task)?;
+    let received_files = recv_result;
 
     // Add received files to notmuch database with enhanced error handling
     let mut new_messages = 0;
