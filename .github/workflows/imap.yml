@@ -370,7 +370,7 @@ jobs:
         grep -q "pulling message" /tmp/mbsync.out
     - run: |
         time notmuch-sync --delete --verbose --verbose --mbsync --remote localhost --user synctest 2>&1 | tee /tmp/notmuch-sync.out
-        grep -q "local:  0 new messages,	0 new files,	1 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
+        grep -q "local:  0 new messages,	0 new files,	3 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
         grep -q "remote: 0 new messages,	0 new files,	0 files copied/moved,	0 files deleted,	0 messages with tag changes,	0 messages deleted" /tmp/notmuch-sync.out
     - run: notmuch dump | sort > /tmp/dump.local
     - run: sudo -u synctest notmuch dump | sort > /tmp/dump.remote
