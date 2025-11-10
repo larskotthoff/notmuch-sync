@@ -49,6 +49,9 @@ def digest(data: bytes) -> str:
         end_idx = data.find(b"\n", search_start)
 
         if end_idx != -1:
+            if data[end_idx + 1] == b'\r':
+                # thanks, outlook
+                end_idx += 1
             to_digest = data[:start_idx] + data[end_idx + 1:]
 
     return hashlib.new("sha256", to_digest).hexdigest()
