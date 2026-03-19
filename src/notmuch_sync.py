@@ -878,7 +878,7 @@ def sync_local(args: argparse.Namespace) -> None:
             ret = proc.poll()
             if ret is not None and ret != 0:
                 try:
-                    err_data = err_remote.read()
+                    err_data = err_remote.read() if err_remote is not None else b''
                 except Exception:
                     err_data = b''
                 if err_data:
@@ -888,8 +888,8 @@ def sync_local(args: argparse.Namespace) -> None:
                     ) from exc
             raise
         finally:
-            ready, _, exc = select([err_remote], [], [], 0)
-            if err_remote is not None and ready and not exc:
+            ready, _, sel_errs = select([err_remote], [], [], 0)
+            if err_remote is not None and ready and not sel_errs:
                 err_data = err_remote.read()
                 # getting zero data on EOF
                 if len(err_data) > 0:
