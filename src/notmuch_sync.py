@@ -87,6 +87,8 @@ def read(stream: IO[bytes] | None) -> bytes:
         return b''
     size_data = stream.read(4)
     transfer["read"] += 4
+    if len(size_data) < 4:
+        raise ConnectionError(f"Remote closed connection unexpectedly (received {len(size_data)} of 4 expected bytes).")
     size = struct.unpack("!I", size_data)[0]
     data = stream.read(size)
     if len(data) < size:
@@ -242,7 +244,10 @@ def initial_sync(
 
     def _recv_uuid():
         logger.info("Receiving UUID...")
-        uuids["theirs"] = from_stream.read(36).decode("utf-8")
+        uuid_data = from_stream.read(36)
+        if len(uuid_data) < 36:
+            raise ConnectionError(f"Remote closed connection unexpectedly while reading UUID (received {len(uuid_data)} bytes).")
+        uuids["theirs"] = uuid_data.decode("utf-8")
         transfer["read"] += 36
 
     run_async(_send_uuid, _recv_uuid)
@@ -862,20 +867,40 @@ def sync_local(args: argparse.Namespace) -> None:
 
             logger.info("Getting change numbers from remote...")
             if from_remote is not None:
-                remote_changes = struct.unpack("!IIIIII", from_remote.read(6 * 4))
+                remote_changes_data = from_remote.read(6 * 4)
+                if len(remote_changes_data) < 6 * 4:
+                    raise ConnectionError(f"Remote closed connection unexpectedly while reading change counts (received {len(remote_changes_data)} bytes).")
+                remote_changes = struct.unpack("!IIIIII", remote_changes_data)
                 transfer["read"] += 6 * 4
             else:
                 remote_changes = (0,0,0,0,0,0)
+        except Exception as exc:
+            ret = proc.poll()
+            if ret is not None and ret != 0:
+                try:
+                    err_data = err_remote.read() if err_remote is not None else b''
+                except Exception:
+                    err_data = b''
+                if err_data:
+                    raise RuntimeError(
+                        f"Remote process failed (exit code {ret}): "
+                        f"{err_data.decode('utf-8', errors='replace').strip()}"
+                    ) from exc
+            raise
         finally:
-            ready, _, exc = select([err_remote], [], [], 0)
-            if err_remote is not None and ready and not exc:
-                data = err_remote.read()
+            ready, _, sel_errs = select([err_remote], [], [], 0)
+            if err_remote is not None and ready and not sel_errs:
+                err_data = err_remote.read()
                 # getting zero data on EOF
-                if len(data) > 0:
-                    logger.error("Remote error: %s", data)
+                if len(err_data) > 0:
+                    data = err_data
+                    logger.error("Remote error: %s", err_data)
 
-            if to_remote is not None:
-                to_remote.close()
+            try:
+                if to_remote is not None:
+                    to_remote.close()
+            except BrokenPipeError:
+                pass
             if from_remote is not None:
                 from_remote.close()
             if err_remote is not None:

@@ -117,6 +117,35 @@ def test_changes_corrupted_file():
         assert str(pwe.value) == f"Sync state file '{f.name}' corrupted, delete to sync from scratch."
 
 
+def test_read_empty_stream():
+    istream = io.BytesIO(b"")
+    with pytest.raises(ConnectionError) as exc:
+        ns.read(istream)
+    assert "0 of 4" in str(exc.value)
+
+
+def test_read_partial_size():
+    istream = io.BytesIO(b"\x00\x00")
+    with pytest.raises(ConnectionError) as exc:
+        ns.read(istream)
+    assert "2 of 4" in str(exc.value)
+
+
+def test_initial_sync_empty_stream():
+    db = lambda: None
+    rev = lambda: None
+    rev.rev = 123
+    rev.uuid = b'00000000-0000-0000-0000-000000000000'
+    db.revision = MagicMock(return_value=rev)
+
+    with patch.object(ns, "get_changes", return_value=[]):
+        istream = io.BytesIO(b"")
+        ostream = io.BytesIO()
+        with pytest.raises(ConnectionError) as exc:
+            ns.initial_sync(db, prefix, istream, ostream)
+        assert "UUID" in str(exc.value)
+
+
 def test_initial_sync():
     db = lambda: None
     rev = lambda: None
