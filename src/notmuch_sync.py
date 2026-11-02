@@ -853,12 +853,13 @@ def sync_local(args: argparse.Namespace) -> None:
             else:
                 remote_changes = (0,0,0,0,0,0)
         finally:
-            ready, _, exc = select([err_remote], [], [], 0)
-            if err_remote is not None and ready and not exc:
-                data = err_remote.read()
-                # getting zero data on EOF
-                if len(data) > 0:
-                    logger.error("Remote error: %s", data)
+            if err_remote is not None:
+                ready, _, exc = select([err_remote], [], [], 0)
+                if ready and not exc:
+                    data = err_remote.read()
+                    # getting zero data on EOF
+                    if len(data) > 0:
+                        logger.error("Remote error: %s", data)
 
             if to_remote is not None:
                 to_remote.close()
