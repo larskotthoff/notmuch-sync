@@ -16,7 +16,6 @@ authors = [
 requires-python = ">=3.6"
 dependencies = [
     "notmuch2",
-    "xapian-bindings",
 ]
 readme = "README.md"
 license = "BSD-3-Clause"

@@ -13,8 +13,7 @@ mbsync-compatible syncing of notmuch databases and mail files.
 
 Assumes that you have [notmuch](https://notmuchmail.org) installed and working.
 Install with e.g. `pip install notmuch-sync`. No configuration is necessary;
-everything is picked up from notmuch. You may however need to install your OS'
-packages for xapian.
+everything is picked up from notmuch.
 
 Before you run `notmuch-sync` for the first time, make sure that notmuch is set
 up correctly (in particular with the correct database path). It is not necessary
@@ -227,10 +226,8 @@ notmuch-sync when this happens.
 Running `notmuch compact` changes the UUID of the database. This means that
 subsequent syncs will abort with an error message.
 
-Like muchsync, notmuch-sync uses xapian directly for some operations for
-efficiency reasons. This means in particular that notmuch-sync assumes that
-value 1 of a xapian document is the message ID and the term "Tghost" is used to
-identify ghost messages.
+Listing all message IDs for deletion synchronization uses notmuch's Python
+bindings and can be expensive for large databases.
 
 notmuch-sync assumes that the remote command does not produce any output except
 for the output produced by the remote notmuch-sync. If you're running a wrapper

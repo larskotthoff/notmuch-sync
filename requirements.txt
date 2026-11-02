@@ -1,4 +1,3 @@
 notmuch2
-xapian-bindings
 pytest
 pytest-shell-utilities

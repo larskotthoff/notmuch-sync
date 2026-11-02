@@ -21,7 +21,6 @@ from pathlib import Path
 from select import select
 
 import notmuch2
-import xapian
 
 logging.basicConfig(format="[{asctime}] {message}", style="{")
 logger = logging.getLogger(__name__)
@@ -521,8 +520,7 @@ def sync_files(
 
 def get_ids(prefix: str) -> List[str]:
     """
-    Get all message IDs from the notmuch database, using Xapian directly (much
-    faster).
+    Get all message IDs from the notmuch database.
 
     Args:
         prefix (str): Prefix path for filenames (notmuch config database.path).
@@ -530,25 +528,13 @@ def get_ids(prefix: str) -> List[str]:
     Returns:
         list: All message IDs.
     """
-    db = xapian.Database(os.path.join(prefix, ".notmuch", "xapian"))
     message_ids = []
 
     logger.info("Getting all message IDs from DB...")
-    ghosts = {p.docid for p in db.postlist("Tghost")} # type: ignore[attr-defined]
-    all_docs = set(range(1, db.get_lastdocid() + 1))
-    for doc_id in all_docs - ghosts:
-        try:
-            doc = db.get_document(doc_id)
-            value = doc.get_value(1)
-            if value:
-                message_ids.append(value.decode("utf-8"))
-        except xapian.DocNotFoundError:
-            pass
-        except RuntimeError:
-            # not entirely sure why, but this seems to happen sometimes
-            continue
-
-    db.close()
+    with notmuch2.Database(path=prefix, mode=notmuch2.Database.MODE.READ_ONLY) as db:
+        for msg in db.messages("*", omit_excluded=notmuch2.Database.EXCLUDE.FALSE):
+            if not msg.ghost and msg.messageid:
+                message_ids.append(msg.messageid)
 
     return message_ids
 
@@ -867,12 +853,13 @@ def sync_local(args: argparse.Namespace) -> None:
             else:
                 remote_changes = (0,0,0,0,0,0)
         finally:
-            ready, _, exc = select([err_remote], [], [], 0)
-            if err_remote is not None and ready and not exc:
-                data = err_remote.read()
-                # getting zero data on EOF
-                if len(data) > 0:
-                    logger.error("Remote error: %s", data)
+            if err_remote is not None:
+                ready, _, exc = select([err_remote], [], [], 0)
+                if ready and not exc:
+                    data = err_remote.read()
+                    # getting zero data on EOF
+                    if len(data) > 0:
+                        logger.error("Remote error: %s", data)
 
             if to_remote is not None:
                 to_remote.close()
